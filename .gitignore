@@ -1,0 +1,27 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot 导出产物 / 凭据（export_presets.cfg 本身要提交）
+export.cfg
+export_credentials.cfg
+*.translation
+build/
+
+# 编辑器 / 系统垃圾文件
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.tmp
+*.bak
+.vscode/
+.idea/
+
+# 本工程调试时产生的临时文件（脚本 / 场景 / 输出）
+# ⚠ 不要写 _*.mjs —— 仓库里的 _dec.mjs 是 Scratch 反编译工具，要保留
+_*.gd
+_*.gd.uid
+_*.tscn
+_*.out
+_*.err

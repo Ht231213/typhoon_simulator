@@ -1,0 +1,233 @@
+[gd_scene format=3 uid="uid://dtbpvhiegwxyy"]
+
+[ext_resource type="Script" uid="uid://dgk51r4dmskr7" path="res://scripts/GameRoot.gd" id="1_root"]
+[ext_resource type="Texture2D" uid="uid://bgvvqorcthubg" path="res://assets/images/WPAC.png" id="2_map"]
+[ext_resource type="Script" uid="uid://j6di8pb7otwv" path="res://scripts/OceanField.gd" id="3_field"]
+[ext_resource type="Script" uid="uid://75noj0h0k078" path="res://scripts/PathLayer.gd" id="4_path"]
+[ext_resource type="Script" uid="uid://chi7l2nh2ykw1" path="res://scripts/PathEditor.gd" id="5_editor"]
+[ext_resource type="Script" uid="uid://gcatyxb02ji5" path="res://scripts/TyphoonSim.gd" id="6_sim"]
+[ext_resource type="Script" uid="uid://bgvg0i5gwch4u" path="res://scripts/Sidebar.gd" id="7_sidebar"]
+[ext_resource type="PackedScene" uid="uid://cwpp53cfhl3k7" path="res://ResultsPanel.tscn" id="8_results"]
+[ext_resource type="PackedScene" uid="uid://cwpp53abjjvq7" path="res://PauseLayer.tscn" id="9_pause"]
+
+[node name="GameRoot" type="Control" unique_id=1260962457]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_root")
+
+[node name="Background" type="ColorRect" parent="." unique_id=141405048]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.043137256, 0.078431375, 0.13725491, 1)
+
+[node name="View" type="HBoxContainer" parent="." unique_id=460854818]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="MapArea" type="PanelContainer" parent="View" unique_id=1178985602]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="MapLayer" type="Node2D" parent="View/MapArea" unique_id=1606845993]
+unique_name_in_owner = true
+
+[node name="MapSprite" type="Sprite2D" parent="View/MapArea/MapLayer" unique_id=2134457641]
+unique_name_in_owner = true
+texture_filter = 1
+position = Vector2(540, 432)
+scale = Vector2(0.36, 0.36)
+texture = ExtResource("2_map")
+
+[node name="GridOverlay" type="Node2D" parent="View/MapArea/MapLayer" unique_id=138385389]
+unique_name_in_owner = true
+script = ExtResource("3_field")
+
+[node name="PathLayer" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2143226245]
+unique_name_in_owner = true
+script = ExtResource("4_path")
+
+[node name="TyphoonSim" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2108909530]
+unique_name_in_owner = true
+script = ExtResource("6_sim")
+
+[node name="PathEditor" type="Control" parent="View/MapArea" unique_id=341522446]
+unique_name_in_owner = true
+layout_mode = 2
+script = ExtResource("5_editor")
+
+[node name="Sidebar" type="PanelContainer" parent="View" unique_id=1551576712]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(370, 0)
+layout_mode = 2
+script = ExtResource("7_sidebar")
+
+[node name="SideRows" type="VBoxContainer" parent="View/Sidebar" unique_id=550990427]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatusTitle" type="Label" parent="View/Sidebar/SideRows" unique_id=1232483709]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "待投放"
+autowrap_mode = 2
+
+[node name="InfoBox" type="PanelContainer" parent="View/Sidebar/SideRows" unique_id=1543586364]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="InfoScroll" type="ScrollContainer" parent="View/Sidebar/SideRows/InfoBox" unique_id=1582870870]
+layout_mode = 2
+
+[node name="InfoLabel" type="Label" parent="View/Sidebar/SideRows/InfoBox/InfoScroll" unique_id=271177655]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "…"
+
+[node name="Buttons" type="VBoxContainer" parent="View/Sidebar/SideRows" unique_id=796472110]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AddButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=59512351]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+tooltip_text = "进入投放环节。进入后在地图上左键标记路径点，再点本按钮投放台风。"
+theme_override_font_sizes/font_size = 17
+text = "＋ 添加台风"
+
+[node name="PlacementRow" type="HBoxContainer" parent="View/Sidebar/SideRows/Buttons" unique_id=91149165]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="UndoPointButton" type="Button" parent="View/Sidebar/SideRows/Buttons/PlacementRow" unique_id=407683569]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "撤销最后一个路径点"
+theme_override_font_sizes/font_size = 14
+text = "撤销路径点"
+
+[node name="ClearPointsButton" type="Button" parent="View/Sidebar/SideRows/Buttons/PlacementRow" unique_id=1887686864]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "清空全部路径点"
+theme_override_font_sizes/font_size = 14
+text = "清空路径点"
+
+[node name="CancelRow" type="HBoxContainer" parent="View/Sidebar/SideRows/Buttons" unique_id=668565059]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CancelButton" type="Button" parent="View/Sidebar/SideRows/Buttons/CancelRow" unique_id=2135582517]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "退出投放环节，并清掉已标记的路径点"
+theme_override_font_sizes/font_size = 15
+text = "取消"
+
+[node name="PauseButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=659173045]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+tooltip_text = "暂停/继续整个模拟：台风移动、强度与气压计算、日期推进全部停止。界面仍可操作。"
+theme_override_font_sizes/font_size = 17
+text = "⏸ 暂停模拟"
+
+[node name="StopButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=1916717013]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+tooltip_text = "消除当前台风。该台风不计入编号、名称顺序与 ACE。"
+theme_override_font_sizes/font_size = 16
+text = "■ 停止模拟"
+
+[node name="DateButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=106179264]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+tooltip_text = "调整游戏内日期。风季模式下禁用（视为作弊）。"
+theme_override_font_sizes/font_size = 16
+text = "📅 调整日期"
+
+[node name="UnitButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=1453209340]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+tooltip_text = "切换风速显示单位（kt / m/s / km/h）。以后会移到设置里。"
+theme_override_font_sizes/font_size = 15
+text = "单位：kt"
+
+[node name="NoticeLabel" type="Label" parent="View/Sidebar/SideRows" unique_id=1774888681]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="DateDialog" type="AcceptDialog" parent="View/Sidebar" unique_id=1547992240]
+unique_name_in_owner = true
+title = "调整日期"
+size = Vector2i(320, 200)
+
+[node name="Grid" type="GridContainer" parent="View/Sidebar/DateDialog" unique_id=488879578]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 304.0
+offset_bottom = 120.0
+columns = 2
+
+[node name="MonthLabel" type="Label" parent="View/Sidebar/DateDialog/Grid" unique_id=1389067845]
+layout_mode = 2
+text = "月份"
+
+[node name="MonthSpin" type="SpinBox" parent="View/Sidebar/DateDialog/Grid" unique_id=247872806]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 12.0
+value = 6.0
+
+[node name="DayLabel" type="Label" parent="View/Sidebar/DateDialog/Grid" unique_id=18867525]
+layout_mode = 2
+text = "日期"
+
+[node name="DaySpin" type="SpinBox" parent="View/Sidebar/DateDialog/Grid" unique_id=340829368]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 30.0
+value = 20.0
+
+[node name="ResultsPanel" parent="." unique_id=194108904 instance=ExtResource("8_results")]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+
+[node name="PauseLayer" parent="." unique_id=1648842156 instance=ExtResource("9_pause")]

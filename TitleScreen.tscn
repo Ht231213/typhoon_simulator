@@ -1,0 +1,232 @@
+[gd_scene format=3 uid="uid://mx871h4g6yb8"]
+
+[ext_resource type="Script" uid="uid://yt12bu26oigc" path="res://TitleScrBtnClk.gd" id="1_title"]
+[ext_resource type="Texture2D" uid="uid://ct6v6nb2axbt1" path="res://assets/images/12W_TRUECOLOR_20260731005000.png" id="2_bg"]
+[ext_resource type="Script" uid="uid://c8bs025dvtmyo" path="res://scripts/SettingsPanel.gd" id="3_settings"]
+[ext_resource type="PackedScene" uid="uid://c3t7ejrb0mtd3" path="res://SettingsMenu.tscn" id="4_appsettings"]
+[ext_resource type="AudioStream" uid="uid://bp3vumhaoww4" path="res://assets/music/titlescr.mp3" id="5_bgm"]
+
+[node name="TitleScreen" type="Control" unique_id=1988055323]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_title")
+
+[node name="12wTruecolor20260731005000" type="Sprite2D" parent="." unique_id=17155122]
+position = Vector2(785, 328)
+texture = ExtResource("2_bg")
+
+[node name="ColorRect" type="ColorRect" parent="12wTruecolor20260731005000" unique_id=631342153]
+offset_left = -944.00006
+offset_top = -831.0
+offset_right = 50.40448
+offset_bottom = 222.0
+rotation = 0.40510625
+color = Color(0.011764706, 0.011764706, 0.011764706, 0.3529412)
+
+[node name="TitleLabel" type="Label" parent="." unique_id=654264117]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 8.0
+offset_bottom = 8.0
+text = "台风模拟"
+
+[node name="ButtonSingleTy" type="Button" parent="." unique_id=528605469]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.2591146
+anchor_top = 0.4537037
+anchor_right = 0.58984375
+anchor_bottom = 0.5462963
+offset_left = -222.5
+offset_top = -111.0
+offset_right = -222.5
+offset_bottom = -111.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 32
+text = "模拟单台"
+
+[node name="ButtonBoard" type="Button" parent="." unique_id=1041713173]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.2591146
+anchor_top = 0.5462963
+anchor_right = 0.58984375
+anchor_bottom = 0.6388889
+offset_left = -238.5
+offset_top = -103.0
+offset_right = -238.5
+offset_bottom = -103.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 32
+text = "ACE 存档"
+
+[node name="ButtonExit" type="Button" parent="." unique_id=1893816805]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.2591146
+anchor_top = 0.5462963
+anchor_right = 0.58984375
+anchor_bottom = 0.6388889
+offset_left = -318.5
+offset_top = 126.00003
+offset_right = -318.5
+offset_bottom = 126.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 32
+text = "退出"
+
+[node name="ButtonSettings" type="Button" parent="." unique_id=1567217171]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.2591146
+anchor_top = 0.5462963
+anchor_right = 0.58984375
+anchor_bottom = 0.6388889
+offset_left = -262.5
+offset_top = -27.99997
+offset_right = -262.5
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 32
+text = "设置"
+
+[node name="SettingsPanel" type="Control" parent="." unique_id=1507461435]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_settings")
+
+[node name="Dim" type="ColorRect" parent="SettingsPanel" unique_id=1600897563]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="Box" type="PanelContainer" parent="SettingsPanel" unique_id=1082501325]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -310.0
+offset_top = -215.0
+offset_right = 310.0
+offset_bottom = 215.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Rows" type="VBoxContainer" parent="SettingsPanel/Box" unique_id=1325766874]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Heading" type="Label" parent="SettingsPanel/Box/Rows" unique_id=2129749799]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "模拟设置"
+horizontal_alignment = 1
+
+[node name="ModeRow" type="HBoxContainer" parent="SettingsPanel/Box/Rows" unique_id=1606306349]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ModeLabel" type="Label" parent="SettingsPanel/Box/Rows/ModeRow" unique_id=706571564]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "模拟模式"
+
+[node name="ModeOption" type="OptionButton" parent="SettingsPanel/Box/Rows/ModeRow" unique_id=271761793]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+
+[node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Box/Rows" unique_id=1914594703]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_constants/icon_max_width = 64
+theme_override_font_sizes/font_size = 26
+text = "风季模式"
+
+[node name="Sep" type="HSeparator" parent="SettingsPanel/Box/Rows" unique_id=295155450]
+layout_mode = 2
+
+[node name="DescLabel" type="Label" parent="SettingsPanel/Box/Rows" unique_id=1597845019]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "…"
+autowrap_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Box/Rows" unique_id=323294088]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="ConfirmButton" type="Button" parent="SettingsPanel/Box/Rows/Buttons" unique_id=95091535]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 54)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "确认"
+
+[node name="CancelButton" type="Button" parent="SettingsPanel/Box/Rows/Buttons" unique_id=1844881377]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 54)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "取消"
+
+[node name="BoardPopup" type="AcceptDialog" parent="." unique_id=1350428423]
+unique_name_in_owner = true
+oversampling_override = 1.0
+title = "ACE 排行榜"
+size = Vector2i(620, 460)
+
+[node name="BoardText" type="RichTextLabel" parent="BoardPopup" unique_id=1207884641]
+unique_name_in_owner = true
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 612.0
+offset_bottom = 411.0
+bbcode_enabled = true
+
+[node name="TitleBgm" type="AudioStreamPlayer" parent="." unique_id=759092681 groups=["music"]]
+stream = ExtResource("5_bgm")
+volume_db = -4.0
+autoplay = true
+
+[node name="AppSettings" parent="." unique_id=316570692 instance=ExtResource("4_appsettings")]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 0

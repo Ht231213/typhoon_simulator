@@ -1,0 +1,87 @@
+[gd_scene load_steps=2 format=3 uid="uid://ctyphoon0result1"]
+
+[ext_resource type="Script" path="res://scripts/ResultsPanel.gd" id="1_results"]
+
+[node name="ResultsPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_results")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="Box" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -330.0
+offset_top = -250.0
+offset_right = 330.0
+offset_bottom = 250.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Rows" type="VBoxContainer" parent="Box"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ResultTitle" type="Label" parent="Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "风季结束"
+horizontal_alignment = 1
+
+[node name="ResultSummary" type="Label" parent="Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "…"
+horizontal_alignment = 1
+
+[node name="Sep" type="HSeparator" parent="Box/Rows"]
+layout_mode = 2
+
+[node name="StormList" type="ItemList" parent="Box/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 190)
+layout_mode = 2
+
+[node name="SaveLabel" type="Label" parent="Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "…"
+autowrap_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Box/Rows"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 24
+
+[node name="AgainButton" type="Button" parent="Box/Rows/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "再跑一局"
+
+[node name="MenuButton" type="Button" parent="Box/Rows/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "回主菜单"

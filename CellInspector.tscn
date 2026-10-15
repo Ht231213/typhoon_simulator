@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://cwpp53asc1vq7"]
+
+[ext_resource type="Script" path="res://scripts/CellInspector.gd" id="1_probe"]
+
+[node name="CellInspector" type="CanvasLayer"]
+layer = 15
+script = ExtResource("1_probe")

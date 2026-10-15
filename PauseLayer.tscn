@@ -1,0 +1,125 @@
+[gd_scene load_steps=2 format=3 uid="uid://ctyphoon0pause01"]
+
+[ext_resource type="Script" path="res://scripts/PauseLayer.gd" id="1_pause"]
+
+[node name="PauseLayer" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_pause")
+
+[node name="Root" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="Margin" type="MarginContainer" parent="Root"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="Box" type="PanelContainer" parent="Root/Margin"]
+layout_mode = 2
+
+[node name="Rows" type="VBoxContainer" parent="Root/Margin/Box"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PauseTitle" type="Label" parent="Root/Margin/Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "已暂停"
+horizontal_alignment = 1
+
+[node name="Sep1" type="HSeparator" parent="Root/Margin/Box/Rows"]
+layout_mode = 2
+
+[node name="Columns" type="HBoxContainer" parent="Root/Margin/Box/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="LeftColumn" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns"]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ResumeButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "回到游戏（也可以按 ESC）"
+text = "回到游戏"
+
+[node name="SettingsButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "打开设置（视频 / 音频）"
+text = "设置"
+
+[node name="MenuButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "放弃本局，返回主菜单"
+text = "返回主菜单"
+
+[node name="RightColumn" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 2.0
+theme_override_constants/separation = 8
+
+[node name="ListTitle" type="Label" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "本次台风列表（0 场）    总 ACE 0.00"
+
+[node name="ListPanel" type="PanelContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Scroll" type="ScrollContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn/ListPanel"]
+layout_mode = 2
+
+[node name="StormList" type="RichTextLabel" parent="Root/Margin/Box/Rows/Columns/RightColumn/ListPanel/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_font_sizes/normal_font_size = 16
+bbcode_enabled = true
+autowrap_mode = 2
+fit_content = true
+scroll_active = false
+
+[node name="Sep2" type="HSeparator" parent="Root/Margin/Box/Rows"]
+layout_mode = 2
+
+[node name="Hint" type="Label" parent="Root/Margin/Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "ESC 全暂停会冻结整个游戏；侧边栏「暂停模拟」只停模拟，界面仍可操作"
+horizontal_alignment = 1
+autowrap_mode = 2
