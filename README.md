@@ -146,8 +146,16 @@ project.godot          main_scene = TitleScreen.tscn
                        autoload: Const(数据表) / Game(状态+存档) / SimClock(时钟)
 TitleScreen.tscn       开始菜单 + 模拟设置界面（内嵌）
 GameRoot.tscn          主模拟场景（地图 + 右侧控制栏）
+PauseLayer.tscn        ESC 全暂停菜单（含本次台风列表）
+SettingsMenu.tscn      设置界面（视频 / 音频），主菜单与 ESC 菜单共用
 ResultsPanel.tscn      风季结束的结果面板
-SingleTy.tscn          早期的空场景，保留未用
+DebugPanel.tscn        调试面板（F6）
+CellInspector.tscn     海区探针（F7）
+
+tools/                 Scratch 提取工具（见 tools/README.md）
+  scratch_decompile.mjs  project.json → 可读伪代码的反编译器
+reference/             原始素材：Scratch 工程 zip、单角色 json、.sprite3
+docs/                  移植分析、参考伪代码、诊断图
 
 scripts/
   Constants.gd   [autoload] 全部数据表与参数：192 格海温、140 台风名、坐标换算
