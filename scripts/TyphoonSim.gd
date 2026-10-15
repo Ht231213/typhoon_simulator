@@ -113,6 +113,10 @@ func _physics_process(delta: float) -> void:
 	# ⑤ 风切变演进（参考里的西风带脚本）
 	_update_shear(storm)
 
+	# ⑤.1 眼壁置换状态机。必须排在强度积分**之前**，
+	#      因为积分时要用到本 tick 的 erc_phase。
+	_update_erc(storm, sim_delta)
+
 	# ⑥ 强度积分：参考的「计算风速增量」+「更新台风状态」。
 	#    ⚠ ΔKt 是**每个 tick 直接加的增量**，不要再乘 sim_delta、也不要再乘系数。
 	#    物理帧率已设成 100 Hz，和参考的 wait(0.01) 一一对应。
@@ -248,7 +252,120 @@ func _wind_delta_rate(storm: Storm) -> float:
 		_:
 			pass
 
+	# ⑨ MPI 软自限（B′，见 Constants 的说明）。
+	#    ΔKt /= (1 + Kt/MPI)：Kt = MPI 时减半，4×MPI 时降到 1/5。
+	#    ⚠ 它**永不归零**，所以台风仍然能涨到 500+，只是要更久——
+	#      这是用户要的「不设硬顶、但要有遏制」。
+	delta /= 1.0 + storm.wind_kt / Const.mpi_for_sst(storm.sst_here)
+
+	# ⑩ 眼壁置换调制。放在最后，作用在完整的 ΔKt 上。
+	delta = _apply_erc_modifier(storm, delta)
+
 	return delta
+
+
+## 眼壁置换对 ΔKt 的调制。三个阶段：
+##   ① 外眼墙生成（FORMING）  ：内眼墙被切断水汽 → 强度基本停滞
+##   ② 内眼墙崩溃（COLLAPSE） ：在这段时间里把目标跌幅扣完；**同时禁止增长**
+##   ③ 新眼墙接管（RECOVERY） ：重新快速增强
+func _apply_erc_modifier(storm: Storm, delta: float) -> float:
+	match storm.erc_phase:
+		Storm.Erc.FORMING:
+			return delta * Const.ERC_FORMING_SUPPRESS
+		Storm.Erc.COLLAPSE:
+			# 负的照样负（登陆/变性/被切变削），正的先压成 0，再叠加崩溃跌幅
+			var ticks: float = maxf(1.0, Const.ERC_COLLAPSE_DAYS * float(Const.TICKS_PER_DAY))
+			var dip_rate: float = -storm.erc_dip_kt / ticks
+			return minf(delta, 0.0) + dip_rate
+		Storm.Erc.RECOVERY:
+			# 成功 → 爆发式重新增强；失败 → 结构坏了，恢复很吃力
+			var bonus: float = Const.ERC_FAIL_RECOVERY_BONUS if storm.erc_failed \
+				else Const.ERC_SUCCESS_RECOVERY_BONUS
+			return delta * bonus
+	return delta
+
+
+## 这次眼壁置换失败的概率。风切变太大 或 海温太低 → 外眼墙组织不起来。
+## 两个因素各贡献一部分，相加后夹在 [0, ERC_FAIL_MAX_P]。
+func _erc_fail_chance(storm: Storm) -> float:
+	var by_shear: float = clampf(
+		(storm.shear - Const.ERC_FAIL_SHEAR_START)
+			/ maxf(1.0, Const.ERC_FAIL_SHEAR_FULL - Const.ERC_FAIL_SHEAR_START),
+		0.0, 1.0) * 0.75
+	var by_sst: float = clampf(
+		(Const.ERC_FAIL_SST_START - storm.sst_here)
+			/ maxf(0.01, Const.ERC_FAIL_SST_START - Const.ERC_FAIL_SST_FULL),
+		0.0, 1.0) * 0.70
+	return clampf(by_shear + by_sst, 0.0, Const.ERC_FAIL_MAX_P)
+
+
+## 眼壁置换状态机。每 tick 推进一步。
+##
+## 触发用**倒计时**而不是「每 tick 掷骰子」：
+##   以前每 tick 概率 = sim_delta / 3天，平均等 3 天，可台风 3 天就从 100 kt 涨到 170 kt，
+##   于是表现成「170 kt 才置换」。现在改成强度第一次够上 ERC_MIN_KT 后只等 0.08~0.30 天。
+func _update_erc(storm: Storm, sim_delta: float) -> void:
+	match storm.erc_phase:
+		Storm.Erc.NONE:
+			# 不满足条件时倒计时**暂停**（强度掉下去就等着，涨回来再接着数）
+			if storm.wind_kt < Const.ERC_MIN_KT:
+				return
+			if storm.phase != Storm.Phase.TROPICAL or storm.landfall:
+				return
+			storm.erc_wait_days -= sim_delta
+			if storm.erc_wait_days > 0.0:
+				return
+			storm.erc_phase = Storm.Erc.FORMING
+			storm.erc_days = 0.0
+			storm.erc_failed = false
+			storm.erc_dip_kt = 0.0
+			storm.erc_count += 1
+			notice.emit("%s 出现双眼墙，开始眼壁置换（第 %d 次）" % [
+				storm.number_text(), storm.erc_count])
+
+		Storm.Erc.FORMING:
+			storm.erc_days += sim_delta
+			if storm.erc_days >= Const.ERC_FORMING_DAYS:
+				# 外眼墙生成期结束 → 判定这次能不能组织起来。
+				# 风切变太大 / 海温太低 → 失败，核心结构崩溃，掉一大截。
+				var chance := _erc_fail_chance(storm)
+				storm.erc_failed = _rng.randf() < chance
+				var frac: float = Const.ERC_FAIL_DIP_FRACTION if storm.erc_failed \
+					else Const.ERC_SUCCESS_DIP_FRACTION
+				storm.erc_dip_kt = storm.wind_kt * frac
+				storm.erc_days = 0.0
+				storm.erc_phase = Storm.Erc.COLLAPSE
+				if storm.erc_failed:
+					storm.erc_fail_count += 1
+					notice.emit("%s 外眼墙没能组织起来，核心结构崩溃！（失败概率 %.0f%%，风切 %.0f 海温 %.1f）" % [
+						storm.number_text(), chance * 100.0, storm.shear, storm.sst_here])
+				else:
+					notice.emit("%s 内眼墙崩溃，强度短暂下降" % storm.number_text())
+
+		Storm.Erc.COLLAPSE:
+			storm.erc_days += sim_delta
+			if storm.erc_days >= Const.ERC_COLLAPSE_DAYS:
+				storm.erc_phase = Storm.Erc.RECOVERY
+				storm.erc_days = 0.0
+				if storm.erc_failed:
+					notice.emit("%s 只剩一圈残缺眼墙，恢复缓慢" % storm.number_text())
+				else:
+					notice.emit("%s 外眼墙接管，重新增强" % storm.number_text())
+
+		Storm.Erc.RECOVERY:
+			storm.erc_days += sim_delta
+			var need: float = Const.ERC_FAIL_RECOVERY_DAYS if storm.erc_failed \
+				else Const.ERC_RECOVERY_DAYS
+			if storm.erc_days >= need:
+				storm.erc_phase = Storm.Erc.NONE
+				storm.erc_days = 0.0
+				storm.erc_wait_days = _rng.randf_range(
+					Const.ERC_INTERVAL_MIN, Const.ERC_INTERVAL_MAX)
+				if storm.erc_failed:
+					notice.emit("%s 眼壁置换失败收场（累计失败 %d 次）" % [
+						storm.number_text(), storm.erc_fail_count])
+				else:
+					notice.emit("%s 眼壁置换完成（新眼墙更大）" % storm.number_text())
 
 
 ## 风切变演进。逐条照抄参考「台风中心.md」里那三个西风带脚本：
@@ -673,7 +790,7 @@ func status_lines() -> PackedStringArray:
 	out.append("气压：%d hPa" % int(roundf(s.central_pressure)))
 	# 参考里没有「海温决定的强度上限」，所以这里也不显示「上限」了
 	# （没有再夹任何上限，台风可以一路涨上去）
-	out.append("海温：%.1f ℃    风切：%.1f kt" % [s.sst_here, s.shear])
+	out.append("海温：%.1f ℃    风切：%.1f" % [s.sst_here, s.shear_display])
 	out.append("巅峰：%d kt    ACE：%.2f" % [int(roundf(s.peak_wind_kt)), s.ace])
 	out.append("路径：%d / %d 段" % [s.segment, s.waypoints.size() - 1])
 	match s.phase:
@@ -726,9 +843,13 @@ func debug_text() -> String:
 		out.append("编号=%s  名称=%s  已命名=%s" % [s.number_text(), s.name_label(), s.name_committed])
 		out.append("Kt=%.2f  气压=%.1f  类型=%d(%s)" % [
 			s.wind_kt, s.central_pressure, s.category, s.category_text()])
-		out.append("海温=%.2f  垂直风切变=%.1f  风切=%.1f  纬度=%.2f  半球=%s" % [
-			s.sst_here, s.shear, s.shear_display, s.latitude,
+		out.append("海温=%.2f  风切=%.1f（内部刻度 %.0f）  纬度=%.2f  半球=%s" % [
+			s.sst_here, s.shear_display, s.shear, s.latitude,
 			"N" if s.northern else "S"])
+		out.append("眼壁置换=%s  已进行 %.2f 天  本次目标跌 %.0f kt  累计 %d 次  下次还需 %.2f 天" % [
+			s.erc_text(), s.erc_days, s.erc_dip_kt, s.erc_count, s.erc_wait_days])
+		out.append("MPI(B′软限)=%.0f kt  当前自限倍数=1/%.2f" % [
+			Const.mpi_for_sst(s.sst_here), 1.0 + s.wind_kt / Const.mpi_for_sst(s.sst_here)])
 		out.append("段=%d/%d  段内进度=%.3f  登陆=%s  变性=%s" % [
 			s.segment, s.waypoints.size() - 1, s.segment_progress, s.landfall, s.category_text()])
 		out.append("ACE=%.2f  巅峰=%.1f  最低气压=%.0f" % [s.ace, s.peak_wind_kt, s.min_pressure])

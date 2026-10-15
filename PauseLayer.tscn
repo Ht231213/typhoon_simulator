@@ -118,8 +118,9 @@ layout_mode = 2
 
 [node name="Hint" type="Label" parent="Root/Margin/Box/Rows"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "ESC 全暂停会冻结整个游戏；侧边栏「暂停模拟」只停模拟，界面仍可操作"
+text = ""
 horizontal_alignment = 1
 autowrap_mode = 2

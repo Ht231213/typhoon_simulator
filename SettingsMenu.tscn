@@ -165,9 +165,10 @@ theme_override_font_sizes/font_size = 19
 tooltip_text = "切换音效素材包，对应 assets/sfx/<预设名>/"
 
 [node name="AudioHint" type="Label" parent="Margin/Box/Rows/Pages/音频"]
+visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "预设目录：res://assets/sfx/<预设名>/landfall/（TS.wav、c1…c5.wav）"
+text = ""
 autowrap_mode = 2
 
 [node name="Sep1" type="HSeparator" parent="Margin/Box/Rows"]
@@ -185,5 +186,5 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
-tooltip_text = "返回。改动已即时保存，不需要额外确认。"
+tooltip_text = "返回"
 text = "返回"

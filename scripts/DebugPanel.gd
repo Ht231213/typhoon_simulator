@@ -33,9 +33,9 @@ const FIELDS: Array[Dictionary] = [
 	{"key": "sst", "label": "该格当前海温", "step": 0.5},
 	{"key": "season", "label": "季节增幅", "step": 0.0},
 	{"key": "sst_here", "label": "★ 实际运算用海温", "step": 0.5},
-	{"key": "shear", "label": "垂直风切变", "step": 5.0},
+	{"key": "shear", "label": "风切", "step": 5.0},
 	{"key": "pressure", "label": "该格气压", "step": 5.0},
-	{"key": "hemi", "label": "半球（可切换）", "step": 1.0},
+	{"key": "hemi", "label": "半球", "step": 1.0},
 	{"key": "start_lat", "label": "投放时起始纬度", "step": 0.0},
 	{"key": "coriolis", "label": "★ 地转偏向力效应", "step": 0.0},
 	{"key": "lat", "label": "当前纬度", "step": 0.0},
@@ -45,6 +45,7 @@ const FIELDS: Array[Dictionary] = [
 	{"key": "cat", "label": "类别", "step": 0.0},
 	{"key": "phase", "label": "变性阶段", "step": 1.0},
 	{"key": "peak", "label": "巅峰风速", "step": 5.0},
+	{"key": "erc", "label": "眼壁置换", "step": 0.0},
 	{"key": "ace", "label": "ACE", "step": 1.0},
 	{"key": "seg", "label": "路径段", "step": 1.0},
 	{"key": "prog", "label": "段内进度", "step": 0.1},
@@ -170,11 +171,6 @@ func _add_row(key: String, label_text: String, step: float) -> void:
 		plus.custom_minimum_size = Vector2(46, 0)
 		plus.pressed.connect(func() -> void: _nudge(key, step))
 		row.add_child(plus)
-	else:
-		var ro := Label.new()
-		ro.text = "（只读）"
-		ro.add_theme_font_size_override("font_size", 13)
-		row.add_child(ro)
 
 	_rows.append({"key": key, "value": value_label, "step": step})
 
@@ -246,16 +242,15 @@ func _get_val(key: String) -> String:
 		"sst_here":
 			return "%.2f ℃" % s.sst_here if s != null else "—"
 		"shear":
-			return "%.1f kt（风切 %.1f）" % [s.shear, s.shear_display] if s != null else "—"
+			# ⚠ 参考里内部变量「垂直风切变」是 0~500 的**无量纲刻度**（原始工程里它是隐藏变量），
+			#   界面上显示的是换算后的「风切」。所以这里主显风切，内部值放括号里且不标 kt。
+			return "%.1f  (内部刻度 %.0f)" % [s.shear_display, s.shear] if s != null else "—"
 		"pressure":
 			return "%d hPa" % int(roundf(field.pressure[idx])) if field != null else "—"
 		"hemi":
-			return ("北 N（本次运算按北半球）" if s.northern else "南 S（本次运算按南半球）") if s != null else "—"
+			return ("北 N" if s.northern else "南 S") if s != null else "—"
 		"start_lat":
-			if s == null:
-				return "—"
-			var ok: bool = (s.start_latitude > 0.0) == s.northern
-			return "%.2f°  %s" % [s.start_latitude, "OK 与半球一致" if ok else "⚠ 与半球不一致"]
+			return "%.2f°" % s.start_latitude if s != null else "—"
 		"coriolis":
 			if s == null:
 				return "—"
@@ -279,7 +274,17 @@ func _get_val(key: String) -> String:
 		"phase":
 			return ["热带", "变性中", "温带气旋"][s.phase] if s != null else "—"
 		"peak":
-			return "%.1f kt（巅峰类别 %d）" % [s.peak_wind_kt, s.peak_category] if s != null else "—"
+			return "%.1f kt" % s.peak_wind_kt if s != null else "—"
+		"erc":
+			if s == null:
+				return "—"
+			if s.erc_phase == Storm.Erc.NONE:
+				var cd := "（下次还需 %.2f 天）" % s.erc_wait_days if s.wind_kt >= Const.ERC_MIN_KT else ""
+				return "无%s   累计 %d 次（失败 %d 次）" % [cd, s.erc_count, s.erc_fail_count]
+			return "%s（已 %.2f 天，本次目标跌 %.0f kt，失败率 %.0f%%）累计 %d 次 / 失败 %d 次" % [
+				s.erc_text(), s.erc_days, s.erc_dip_kt,
+				sim._erc_fail_chance(s) * 100.0 if sim != null else 0.0,
+				s.erc_count, s.erc_fail_count]
 		"ace":
 			return "%.2f" % s.ace if s != null else "—"
 		"seg":

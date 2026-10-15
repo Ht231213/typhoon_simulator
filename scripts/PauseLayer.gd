@@ -78,6 +78,7 @@ func _on_settings_pressed() -> void:
 	if _settings == null:
 		_settings = load(SETTINGS_SCENE).instantiate()
 		add_child(_settings)
+		# 关掉设置后不留任何样板提示（用户要求去掉这类文字）
 		_settings.on_closed = func() -> void:
-			hint_label.text = "设置已保存到 %s" % GameSettings.save_path_absolute()
+			hint_label.text = ""
 	_settings.open()

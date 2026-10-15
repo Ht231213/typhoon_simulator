@@ -115,7 +115,8 @@ text = "设置"
 [node name="SettingsPanel" type="Control" parent="." unique_id=1507461435]
 unique_name_in_owner = true
 visible = false
-anchors_preset = 0
+layout_mode = 3
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
@@ -123,53 +124,76 @@ grow_vertical = 2
 script = ExtResource("3_settings")
 
 [node name="Dim" type="ColorRect" parent="SettingsPanel" unique_id=1600897563]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.65)
+color = Color(0, 0, 0, 0.72)
 
-[node name="Box" type="PanelContainer" parent="SettingsPanel" unique_id=1082501325]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -310.0
-offset_top = -215.0
-offset_right = 310.0
-offset_bottom = 215.0
+[node name="Margin" type="MarginContainer" parent="SettingsPanel" unique_id=1600897564]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
-[node name="Rows" type="VBoxContainer" parent="SettingsPanel/Box" unique_id=1325766874]
+[node name="Box" type="PanelContainer" parent="SettingsPanel/Margin" unique_id=1082501325]
 layout_mode = 2
-theme_override_constants/separation = 18
 
-[node name="Heading" type="Label" parent="SettingsPanel/Box/Rows" unique_id=2129749799]
+[node name="Pad" type="MarginContainer" parent="SettingsPanel/Margin/Box" unique_id=1082501326]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 18
+
+[node name="Rows" type="VBoxContainer" parent="SettingsPanel/Margin/Box/Pad" unique_id=1325766874]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Heading" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=2129749799]
 layout_mode = 2
 theme_override_font_sizes/font_size = 34
 text = "模拟设置"
 horizontal_alignment = 1
 
-[node name="ModeRow" type="HBoxContainer" parent="SettingsPanel/Box/Rows" unique_id=1606306349]
+[node name="Sep0" type="HSeparator" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=295155451]
+layout_mode = 2
+
+[node name="Columns" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=295155452]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 40
+
+[node name="Left" type="VBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns" unique_id=295155453]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="ModeRow" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left" unique_id=1606306349]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="ModeLabel" type="Label" parent="SettingsPanel/Box/Rows/ModeRow" unique_id=706571564]
+[node name="ModeLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=706571564]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "模拟模式"
 
-[node name="ModeOption" type="OptionButton" parent="SettingsPanel/Box/Rows/ModeRow" unique_id=271761793]
+[node name="ModeOption" type="OptionButton" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=271761793]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 22
 
-[node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Box/Rows" unique_id=1914594703]
+[node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left" unique_id=1914594703]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
@@ -177,30 +201,32 @@ theme_override_constants/icon_max_width = 64
 theme_override_font_sizes/font_size = 26
 text = "风季模式"
 
-[node name="Sep" type="HSeparator" parent="SettingsPanel/Box/Rows" unique_id=295155450]
+[node name="Right" type="MarginContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns" unique_id=1597845020]
 layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_top = 8
 
-[node name="DescLabel" type="Label" parent="SettingsPanel/Box/Rows" unique_id=1597845019]
+[node name="DescLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right" unique_id=1597845019]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 18
 text = "…"
 autowrap_mode = 2
+vertical_alignment = 0
 
-[node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Box/Rows" unique_id=323294088]
+[node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=323294088]
 layout_mode = 2
 theme_override_constants/separation = 28
 alignment = 1
 
-[node name="ConfirmButton" type="Button" parent="SettingsPanel/Box/Rows/Buttons" unique_id=95091535]
+[node name="ConfirmButton" type="Button" parent="SettingsPanel/Margin/Box/Pad/Rows/Buttons" unique_id=95091535]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(180, 54)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "确认"
 
-[node name="CancelButton" type="Button" parent="SettingsPanel/Box/Rows/Buttons" unique_id=1844881377]
+[node name="CancelButton" type="Button" parent="SettingsPanel/Margin/Box/Pad/Rows/Buttons" unique_id=1844881377]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(180, 54)
 layout_mode = 2

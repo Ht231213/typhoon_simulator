@@ -77,7 +77,9 @@ func open() -> void:
 		tab_bar.current_tab = 0
 	if pages.get_tab_count() > 0:
 		pages.current_tab = 0
-	hint_label.text = "改动已即时保存到 %s" % GameSettings.save_path_absolute()
+	# ⚠ 这里**不再**写任何「已保存到 …」之类的样板提示文字（用户要求去掉）。
+	#   用户明确要求去掉这类样板提示。hint_label 只在真出错时才显示内容。
+	hint_label.text = ""
 	visible = true
 
 
@@ -93,28 +95,24 @@ func _on_fullscreen_toggled(value: bool) -> void:
 	var ok: bool = GameSettings.set_fullscreen(value)
 	# 没生效（编辑器内嵌窗口）→ 把勾选框拉回去，并说明原因，别让它显示成已开
 	fullscreen_check.set_pressed_no_signal(GameSettings.fullscreen)
-	if ok:
-		hint_label.text = "已保存：全屏 = %s" % ("开" if GameSettings.fullscreen else "关")
-	else:
-		hint_label.text = "当前环境不支持全屏——编辑器里请在「编辑器设置 → 运行 → 窗口」关掉「嵌入游戏窗口」，或直接运行导出的 exe"
+	# 只有真出错才给文字，成功时不留任何提示
+	hint_label.text = "" if ok else \
+		"当前环境不支持全屏——编辑器里请关掉「编辑器设置 → 运行 → 窗口 → 嵌入游戏窗口」，或运行导出的 exe"
 
 
 func _on_music_changed(value: float) -> void:
 	GameSettings.set_music_volume(value / 100.0)
 	_refresh_volume_labels()
-	hint_label.text = "已保存：音乐音量 %d%%" % int(roundf(value))
 
 
 func _on_sfx_changed(value: float) -> void:
 	GameSettings.set_sfx_volume(value / 100.0)
 	_refresh_volume_labels()
-	hint_label.text = "已保存：音效音量 %d%%" % int(roundf(value))
 
 
 func _on_preset_selected(index: int) -> void:
 	if index >= 0 and index < GameSettings.SFX_PRESETS.size():
 		GameSettings.set_sfx_preset(GameSettings.SFX_PRESETS[index])
-		hint_label.text = "已保存：音效预设 %s" % GameSettings.sfx_preset
 
 
 # ============================ 关闭 ============================

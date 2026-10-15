@@ -30,6 +30,39 @@ var transition_days := 0.0
 var extratropical: bool:
 	get: return phase == Phase.EXTRATROPICAL
 
+# ------------------------- 眼壁置换循环（ERC）-------------------------
+## 真实气象学里的眼壁置换：强台风外围生成第二圈眼墙 → 外眼墙收缩切断内眼墙水汽 →
+## 内眼墙崩溃、强度**暂时下降** → 外眼墙接管成新眼墙 → **重新增强**，常超过原强度。
+## 周期约 1~3 天，减弱阶段 6~24 小时，可反复发生。
+enum Erc {
+	NONE,        ## 没在置换
+	FORMING,     ## 外眼墙生成中（强度停滞）
+	COLLAPSE,    ## 内眼墙崩溃（强度下降）
+	RECOVERY,    ## 新眼墙接管（快速重新增强）
+}
+var erc_phase: Erc = Erc.NONE
+## 当前阶段已经过了多少模拟天
+var erc_days := 0.0
+## 距离下一次置换还差多少模拟天（倒计时，只在强度够的时候才走）
+var erc_wait_days := 0.3
+## 这次置换的目标跌幅（kt），在 COLLAPSE 阶段扣完
+var erc_dip_kt := 0.0
+## 这次置换是否**失败**（外眼墙没组织起来 → 核心结构崩溃）
+var erc_failed := false
+## 这一生经历过几次置换（战报/调试用）
+var erc_count := 0
+## 这一生失败过几次
+var erc_fail_count := 0
+
+## 眼壁置换阶段的中文名
+func erc_text() -> String:
+	var tail := "（已失败）" if erc_failed and erc_phase != Erc.NONE else ""
+	match erc_phase:
+		Erc.FORMING:  return "外眼墙生成"
+		Erc.COLLAPSE: return "内眼墙崩溃" + tail
+		Erc.RECOVERY: return ("结构崩溃后勉强恢复" if erc_failed else "新眼墙接管") + tail
+	return "无"
+
 ## 是否已经不属于热带气旋了（变性中 + 已变性）
 func is_non_tropical() -> bool:
 	return phase != Phase.TROPICAL
