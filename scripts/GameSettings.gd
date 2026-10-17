@@ -29,6 +29,27 @@ var fullscreen := false
 ## 音效预设名（对应 assets/sfx/<名字>/）
 var sfx_preset := DEFAULT_SFX_PRESET
 
+# ------------------------- 模拟设置（1.1.0 新增）-------------------------
+# ⚠ 这些不是"玩家偏好"，而是**影响模拟结果的参数**。
+#   和 Const 里的出厂默认值分开存，因为玩家可以在「模拟设置」里改。
+#   出厂默认值本身来自 Const，保证只有一处定义。
+#
+# 海温：SimClock.seasonal_sst_amplitude() 直接用这两个值：
+#   海温增幅（最终）= sin((月份−5)×30) × seasonal_amplitude + (mean_sst − 30)
+## 平均海温（℃）。默认 = Const.MEAN_SST。可设 20~100（用户 2026-10-17：大数值增加可玩性）
+var mean_sst := Const.MEAN_SST
+## 季节海温增幅（℃）。默认 = Const.SEASONAL_AMPLITUDE
+var seasonal_amplitude := Const.SEASONAL_AMPLITUDE
+## 是否把热带扰动和热带低压（<30 kt）也记进台风列表。
+## ⚠ **不影响 ACE 排行榜** —— ACE 只统计台风级（≥34 kt）及以上。
+var record_disturbances := false
+## 是否记录最佳路径数据集
+var best_track_enabled := false
+## 最佳路径导出目录。空字符串 = 用默认目录（游戏根目录下的 BestTrack/）
+var best_track_dir := ""
+## 风速显示单位：0=kt 1=m/s 2=km/h（对应 TyphoonSim.WIND_UNITS）
+var wind_unit_index := 0
+
 
 func _ready() -> void:
 	_ensure_buses()
@@ -166,6 +187,13 @@ func _save() -> void:
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
 	cfg.set_value("audio", "sfx_preset", sfx_preset)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	# 模拟设置
+	cfg.set_value("sim", "mean_sst", mean_sst)
+	cfg.set_value("sim", "seasonal_amplitude", seasonal_amplitude)
+	cfg.set_value("sim", "record_disturbances", record_disturbances)
+	cfg.set_value("sim", "best_track_enabled", best_track_enabled)
+	cfg.set_value("sim", "best_track_dir", best_track_dir)
+	cfg.set_value("sim", "wind_unit_index", wind_unit_index)
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("设置写入失败：%s" % SAVE_PATH)
@@ -181,6 +209,32 @@ func _load() -> void:
 	var preset := str(cfg.get_value("audio", "sfx_preset", sfx_preset))
 	if SFX_PRESETS.has(preset):
 		sfx_preset = preset
+	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
+	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)
+	seasonal_amplitude = clampf(
+		float(cfg.get_value("sim", "seasonal_amplitude", seasonal_amplitude)), 0.0, 4.0)
+	record_disturbances = bool(cfg.get_value("sim", "record_disturbances", record_disturbances))
+	best_track_enabled = bool(cfg.get_value("sim", "best_track_enabled", best_track_enabled))
+	best_track_dir = str(cfg.get_value("sim", "best_track_dir", best_track_dir))
+	wind_unit_index = clampi(int(cfg.get_value("sim", "wind_unit_index", wind_unit_index)), 0, 2)
+
+
+## 改海温相关参数后调一次：广播变化让各系统重新取用
+func set_sim_sst(mean_value: float, season_value: float) -> void:
+	mean_sst = clampf(mean_value, 20.0, 100.0)
+	seasonal_amplitude = clampf(season_value, 0.0, 4.0)
+	_save()
+	changed.emit()
+
+
+## 风速单位（0=kt 1=m/s 2=km/h）。TyphoonSim.wind_unit_index 会转发到这里。
+func set_wind_unit_index(index: int) -> void:
+	var v := clampi(index, 0, 2)
+	if v == wind_unit_index:
+		return
+	wind_unit_index = v
+	_save()
+	changed.emit()
 
 
 ## 兼容旧调用：现在每次改动就写盘了，commit 只是再存一次

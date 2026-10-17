@@ -8,6 +8,11 @@ extends CanvasLayer
 ##   ③ 快捷操作：重置海温、让台风立刻消散、投放测试台风
 ##
 ## ⚠ 只在调试时用。本面板直接改物理状态，绕过正常流程。
+##
+## ⚠ 「季节增幅」那行的【−】/【＋】调的是**全局幅度** `GameSettings.seasonal_amplitude`
+##   （0~4℃，和「模拟设置」里同一个值），**不是**改某个格子的海温。
+##   显示里同时给出「本月算出的季节偏移」和「幅度」两个数——因为幅度是乘数，
+##   5 月 / 11 月 sin=0 时算出来的偏移恒为 0，只显示偏移会让人以为按钮坏了。
 
 var sim: Node = null
 var field: OceanField = null
@@ -31,7 +36,9 @@ const FIELDS: Array[Dictionary] = [
 	{"key": "cell", "label": "台风所在格", "step": 0.0},
 	{"key": "base_sst", "label": "该格观测海温", "step": 0.5},
 	{"key": "sst", "label": "该格当前海温", "step": 0.5},
-	{"key": "season", "label": "季节增幅", "step": 0.0},
+	# ⚠ season 的 step 从 0.0 改成 0.5：这一行现在**可调**（改的是 GameSettings.seasonal_amplitude），
+	#   step = 0 时 _add_row 不会建【−】/【＋】按钮，看起来还是只读的。
+	{"key": "season", "label": "季节增幅", "step": 0.5},
 	{"key": "sst_here", "label": "★ 实际运算用海温", "step": 0.5},
 	{"key": "shear", "label": "风切", "step": 5.0},
 	{"key": "pressure", "label": "该格气压", "step": 5.0},
@@ -160,6 +167,18 @@ func _add_row(key: String, label_text: String, step: float) -> void:
 	value_label.add_theme_font_size_override("font_size", 15)
 	row.add_child(value_label)
 
+	# 「季节增幅」这一行有两个容易混的数：本月算出的偏移 vs 可调的幅度。
+	# 把完整说明放进 tooltip 兜底（数值本身已经两个都显示了）。
+	# ⚠ Label 默认 mouse_filter = IGNORE，鼠标根本进不来、tooltip 不会弹，所以要显式设 STOP。
+	if key == "season":
+		var tip: String = "前一个数 = 本月算出的季节海温偏移：sin((月−5)×30°) × 幅度 + (平均海温−30)\n" \
+			+ "后一个数 = 【−】/【＋】真正在改的全局「季节海温增幅」（0~4℃，会写进设置文件）\n" \
+			+ "5 月 / 11 月 sin=0，按按钮时前一个数不变是正常的。"
+		for node in [name_label, value_label]:
+			var lbl := node as Label
+			lbl.tooltip_text = tip
+			lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+
 	if step > 0.0:
 		var minus := Button.new()
 		minus.text = "−"
@@ -238,7 +257,12 @@ func _get_val(key: String) -> String:
 		"sst":
 			return "%.2f ℃" % field.sst[idx] if field != null else "—"
 		"season":
-			return "%+.2f ℃" % SimClock.seasonal_sst_amplitude()
+			# 两个数一起给，缺一个都会让人看不懂：
+			#   前一个 = 本月**算出来**的季节偏移（sin((月−5)×30°)×幅度 + 平均海温−30）
+			#   后一个 = 【−】/【＋】真正在改的**幅度**（全局设置）
+			# 5 月 / 11 月 sin=0，此时按按钮前一个数不会变，只能靠后一个数看出按钮有效。
+			return "%+.2f ℃（幅度 %.2f）" % [
+				SimClock.seasonal_sst_amplitude(), GameSettings.seasonal_amplitude]
 		"sst_here":
 			return "%.2f ℃" % s.sst_here if s != null else "—"
 		"shear":
@@ -314,6 +338,14 @@ func _nudge(key: String, delta: float) -> void:
 		"shear":
 			if s != null:
 				s.shear = clampf(s.shear + delta, 0.0, Const.SHEAR_MAX)
+		"season":
+			# 改的是**全局幅度**（GameSettings.seasonal_amplitude），不是格子海温。
+			# 范围 0~4℃ 与「模拟设置」里的 SpinBox 一致；旧模型「改格子海温」的做法已废弃，
+			# 这里**不要**再碰 field.sst。
+			# 这是玩家设置项，改完落盘（DebugPanel 是调试工具，不追求去抖）。
+			GameSettings.seasonal_amplitude = clampf(
+				GameSettings.seasonal_amplitude + delta, 0.0, 4.0)
+			GameSettings.commit()
 		"pressure":
 			if field != null:
 				field.pressure[idx] = clampf(field.pressure[idx] + delta, 800.0, 1050.0)

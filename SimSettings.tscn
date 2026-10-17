@@ -1,0 +1,213 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/SimSettings.gd" id="1_sim"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_best"]
+content_margin_left = 16.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.42, 0.62, 1, 0.1)
+border_width_left = 4
+border_color = Color(0.45, 0.72, 1, 0.75)
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+
+[node name="SimSettings" type="VBoxContainer"]
+theme_override_constants/separation = 0
+script = ExtResource("1_sim")
+
+[node name="Frame" type="PanelContainer" parent="."]
+layout_mode = 2
+
+[node name="FrameMargin" type="MarginContainer" parent="Frame"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="FrameRows" type="VBoxContainer" parent="Frame/FrameMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="Button" parent="Frame/FrameMargin/FrameRows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+tooltip_text = "点击折叠 / 展开模拟设置"
+flat = true
+alignment = 0
+text = "▼ 模拟设置"
+
+[node name="SepTop" type="HSeparator" parent="Frame/FrameMargin/FrameRows"]
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="Frame/FrameMargin/FrameRows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ModeRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ModeLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/ModeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "模拟模式"
+
+[node name="ModeOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/ModeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+tooltip_text = "手动：自己在地图上画路径；自动：沿内置路径生成。进游戏后不可改。"
+
+[node name="SeasonCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 19
+tooltip_text = "只模拟 12 个月（1月1日 → 12月30日），结束后结算并写入 ACE 排行榜。进游戏后不可改。"
+text = "风季模式"
+
+[node name="UnitRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="UnitLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/UnitRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "单位设置"
+
+[node name="UnitOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/UnitRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+tooltip_text = "风速显示单位。只影响界面显示，不影响物理计算。"
+alignment = 2
+
+[node name="MeanSstRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MeanSstLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/MeanSstRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "平均海温"
+
+[node name="MeanSstSpin" type="SpinBox" parent="Frame/FrameMargin/FrameRows/Content/MeanSstRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+tooltip_text = "所有海区统一的基准海温（℃）。默认 30.0 = 不偏移；调高 = 整体更暖、台风更容易增强。"
+min_value = 20.0
+max_value = 100.0
+step = 0.5
+value = 30.0
+suffix = " ℃"
+alignment = 2
+
+[node name="SeasonalAmpRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="SeasonalAmpLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/SeasonalAmpRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "季节海温增幅"
+
+[node name="SeasonalAmpSpin" type="SpinBox" parent="Frame/FrameMargin/FrameRows/Content/SeasonalAmpRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+tooltip_text = "海温的季节变化幅度（℃）。8 月最暖、2 月最冷。默认 1.5。"
+min_value = 0.0
+max_value = 4.0
+step = 0.5
+value = 1.5
+suffix = " ℃"
+alignment = 2
+
+[node name="SepMid2" type="HSeparator" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+
+[node name="RecordDisturbancesCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 19
+tooltip_text = "关：只有 ≥30 kt 才进台风列表。开：<30 kt 的热带扰动 / 热带低压也记进去。不影响 ACE 排行榜。"
+text = "记录热带扰动和低压"
+
+[node name="BestTrackGroup" type="PanelContainer" parent="Frame/FrameMargin/FrameRows/Content"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_best")
+
+[node name="BestTrackBox" type="VBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BestTrackCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 19
+tooltip_text = "把每场台风的路径点、强度、时间记录成数据集，用来和真实最佳路径做对比。"
+text = "最佳路径数据集"
+
+[node name="BestTrackDirRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BestTrackDirLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(84, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "导出路径"
+
+[node name="BestTrackDirEdit" type="LineEdit" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+placeholder_text = "默认：<游戏根>/BestTrack"
+tooltip_text = "数据集写到哪个目录。默认 <游戏根>/BestTrack，可点「浏览…」改。"
+caret_blink = true
+
+[node name="BestTrackBrowseButton" type="Button" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(104, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+tooltip_text = "选择导出目录"
+text = "浏览…"
+
+[node name="DirDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "选择最佳路径导出目录"
+size = Vector2i(760, 520)
+visible = false
+file_mode = 2
+access = 2

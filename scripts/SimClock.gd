@@ -140,5 +140,10 @@ func is_idle_speed() -> bool:
 
 ## 海温的季节变化幅度。对应原角色「基础系统//海温季节变化」：
 ## 海温增幅（最终）= sin((月份 - 5) * 30) * 季节海温变化幅度 + (平均海温 - 30)
+##
+## ⚠ 幅度和平均海温**不再是常量**：玩家可以在「模拟设置」里调
+##   （GameSettings.seasonal_amplitude / mean_sst，出厂默认值来自 Const）。
+##   每次现取，所以改设置后立刻生效，不用重启。
 func seasonal_sst_amplitude() -> float:
-	return sin(deg_to_rad((month - 5) * 30.0)) * Const.SEASONAL_AMPLITUDE + (Const.MEAN_SST - 30.0)
+	return sin(deg_to_rad((month - 5) * 30.0)) * GameSettings.seasonal_amplitude \
+		+ (GameSettings.mean_sst - 30.0)

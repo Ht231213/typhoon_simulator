@@ -29,11 +29,46 @@ extends Control
 ## 关闭时的回调（由打开方注入）
 var on_closed: Callable = Callable()
 
+## 「模拟设置」组件实例（1.1.0）。只放**可调参数**，不含模式选项。
+var sim_settings: Node = null
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 
+	# 第 3 页：模拟设置（1.1.0）。
+	# ⚠ 用户定义：这里只放**可调参数**（单位 / 平均海温 / 季节增幅 / 记录扰动 / 最佳路径），
+	#   **模式选项**（模式 + 风季）属于「模拟单台」面板，不在这里。
+	# 用代码动态加，避免手改 .tscn；下面同步标签数量的逻辑会自动带上它。
+	#
+	# ⚠ 为什么还要在外面包一层 ScrollContainer（2026-10-17，用户报「内容被裁掉」）：
+	#   TabContainer 的高度是场景里定死的，而它的**最小高度**取自「当前页的最小高度」。
+	#   模拟设置页有 6 行内容（最小 376 px 高），直接当 Pages 的子节点会把 Pages 的最小
+	#   高度顶到 376，于是矮窗口时 VBox 只能按最小值排 → 整页把「返回」按钮顶出屏幕。
+	#   包一层 ScrollContainer 后：① 该页对 Pages 最小高度的贡献几乎归零（只剩滚动条厚度），
+	#   页面能跟着窗口缩；② 真装不下时纵向滚动条才出现（AUTO），装得下时完全看不出。
+	#   ⚠ ScrollContainer 的**名字就是标签标题**（TabContainer 用直接子节点名当 tab 名），
+	#     所以它必须叫「模拟设置」，里面那层 page 随便叫。
+	var scroll := ScrollContainer.new()
+	scroll.name = "模拟设置"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.clip_contents = true        # 内容超长时别画到相邻 UI 上
+	scroll.follow_focus = true         # Tab 键跳到看不见的控件时自动滚过去
+	pages.add_child(scroll)
+
+	var page := VBoxContainer.new()
+	page.name = "SimSettingsPage"
+	page.add_theme_constant_override("separation", 8)
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(page)
+
+	sim_settings = load("res://SimSettings.tscn").instantiate()
+	page.add_child(sim_settings)
+	sim_settings.setup(true, Game.season_mode)
+	sim_settings.settings_changed.connect(_on_sim_settings_changed)
 	# 用外置 TabBar 控制 TabContainer：同步标签数量 + 标题，再藏掉 TabContainer 自带的标签条
 	pages.tabs_visible = false
 	tab_bar.tab_count = pages.get_tab_count()
@@ -53,6 +88,12 @@ func _ready() -> void:
 
 func _on_tab_changed(index: int) -> void:
 	pages.current_tab = index
+
+
+## 「模拟设置」改动：落盘 + 广播，让 TyphoonSim 等重同步（如最佳路径开关）
+func _on_sim_settings_changed() -> void:
+	GameSettings.commit()
+	GameSettings.changed.emit()
 
 
 func _setup_presets() -> void:

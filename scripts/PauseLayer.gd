@@ -57,14 +57,17 @@ func resume() -> void:
 
 
 ## 本局已自然结束的台风列表。点「停止模拟」的台风不进这里（也不计入 ACE）。
+## ⚠ 用 visible_records()：默认只列热带风暴级及以上，
+##   打开「记录热带扰动和低压」后连 <30 kt 的扰动也一并列出。
 func _refresh_storm_list() -> void:
-	list_title.text = "本次台风列表（%d 场）    总 ACE %.2f" % [Game.records.size(), Game.total_ace]
-	if Game.records.is_empty():
+	var vis := Game.visible_records()
+	list_title.text = "本次台风列表（%d 场）    总 ACE %.2f" % [vis.size(), Game.total_ace]
+	if vis.is_empty():
 		storm_list.text = "[i][color=#889]还没有自然结束的台风。[/color][/i]"
 		return
 	var lines := PackedStringArray()
-	for i in Game.records.size():
-		lines.append(Game.format_record(Game.records[i]))
+	for i in vis.size():
+		lines.append(Game.format_record(vis[i]))
 	storm_list.text = "\n".join(lines)
 
 

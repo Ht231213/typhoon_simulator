@@ -131,6 +131,11 @@ func _load_sim_config() -> void:
 		"ocean", "shelf_cap_20m", SHELF_CAP_20)
 	SHELF_EXCESS_PULL = _cfg_num_in(base, base_ok, over, over_ok,
 		"ocean", "shelf_excess_pull", SHELF_EXCESS_PULL)
+	# 超顶超增长抑制（[intensity] 段）
+	SUPER_LIMIT_KT = _cfg_num_in(base, base_ok, over, over_ok,
+		"intensity", "super_limit_kt", SUPER_LIMIT_KT)
+	SUPER_RAMP_KT = _cfg_num_in(base, base_ok, over, over_ok,
+		"intensity", "super_ramp_kt", SUPER_RAMP_KT)
 	# 陆地指数衰减（[ocean] 段）
 	LAND_DECAY_BG_KT = _cfg_num_in(base, base_ok, over, over_ok,
 		"ocean", "land_decay_bg_kt", LAND_DECAY_BG_KT)
@@ -160,12 +165,17 @@ func _load_sim_config() -> void:
 	LAND_DECAY_TAU_MOUNTAIN = clampf(LAND_DECAY_TAU_MOUNTAIN, 1.0, LAND_DECAY_TAU_PLAIN)
 	LAND_DECAY_TAU_MOUNTAIN2500 = clampf(LAND_DECAY_TAU_MOUNTAIN2500, 1.0,
 		LAND_DECAY_TAU_MOUNTAIN)
+	# 超顶超：门槛要大于 0，ramp 要大于 0（否则除零）
+	SUPER_LIMIT_KT = clampf(SUPER_LIMIT_KT, 50.0, 600.0)
+	SUPER_RAMP_KT = clampf(SUPER_RAMP_KT, 1.0, 600.0)
 
 	SIM_HOURS_PER_REAL_SECOND = 24.0 / SECONDS_PER_DAY
 	print("[Const] 仿真节拍配置：%s" % sim_config_source)
 	print("[Const] 帧率=%d Hz  1 模拟日=%.2f 秒  空闲=%.2f 秒  降温间隔=%.2f 秒  风切游走=%.2f 秒  陆地海温=%.1f℃" % [
 		physics_ticks_per_second, SECONDS_PER_DAY, SECONDS_PER_DAY_IDLE,
 		COOLING_APPLY_INTERVAL_SECONDS, SHEAR_WALK_INTERVAL, LAND_SST])
+	print("[Const] 超顶超抑制：超过 %.0f kt 后增长额外除以 1+(Kt−%.0f)/%.0f" % [
+		SUPER_LIMIT_KT, SUPER_LIMIT_KT, SUPER_RAMP_KT])
 
 
 ## 读一个 .cfg 并解析。**手动读文本再 parse**，不要直接用 `ConfigFile.load()`：
@@ -528,6 +538,9 @@ var sst_data_source := "（未加载）"
 ## 当台风被判定在陆地上时，海温按这个值算（陆地上没有海表面温度）。
 ## 参考用「海温 ≤ 10℃」编码陆地；这里取 2.0（参考里最常见的陆地编码值）。
 ## 值在 config/simulation.cfg 的 [ocean] 段里可调。
+## 台风能"读到"的海温上限（℃）。平均海温可以设到 100，但读进来最多这么多。
+## 用户 2026-10-17：大数值增加可玩性；上限防止 MPI 软限算出荒谬的数。
+const SST_READ_CAP := 100.0
 var LAND_SST := 2.0
 
 # ------------------------- 浅海热库上限 -------------------------
@@ -556,6 +569,29 @@ func shelf_cap_kt(band: int) -> float:
 		2: return SHELF_CAP_50
 		1: return SHELF_CAP_100
 	return 1.0e9
+
+
+# ------------------------- 超顶超增长抑制 -------------------------
+# 参考工程没有强度上限，台风能一路涨到 500+ kt（原版存档里就是 503.54）。
+# B′ 的 MPI 软自限虽然会减速，但过了一定强度后增长还是嫌快。
+#
+# 用户 2026-10-17 决定：**超过 170 kt（超顶超）之后额外压一下增长**，
+# 但不要硬顶——仍然要能慢慢爬到 300~400 kt 增加可玩性。
+#
+# 施加方式：只在 ΔKt > 0（正增长）时除以下面这个因子，衰减不受影响。
+#   divisor = 1 + (Kt − 170) / ramp
+#   Kt=170 → 1.0（无影响）
+#   Kt=255 → 1.5      Kt=340 → 2.0      Kt=510 → 3.0
+# 叠加 B′ 之后，Kt=340 时总抑制约 6 倍 → 增长从 ~36 kt/日 降到 ~6 kt/日。
+var SUPER_LIMIT_KT := 170.0
+var SUPER_RAMP_KT := 170.0
+
+
+## 超过超顶超门槛后，正增长要额外除的因子。没超过返回 1.0（不影响）。
+func super_typhoon_damping(wind_kt: float) -> float:
+	if wind_kt <= SUPER_LIMIT_KT or SUPER_RAMP_KT <= 0.0:
+		return 1.0
+	return 1.0 + (wind_kt - SUPER_LIMIT_KT) / SUPER_RAMP_KT
 
 
 # ------------------------- 陆地衰减（指数式）-------------------------

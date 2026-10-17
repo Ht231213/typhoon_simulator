@@ -29,7 +29,14 @@ var season_mode := false
 var active_storm: Storm = null
 var paused := false
 var season_over := false
-var wind_unit_index := 0
+## 风速显示单位：0=kt 1=m/s 2=km/h。
+## 实际存在 GameSettings 里（可以在「模拟设置」里改，并且会写盘持久化），
+## 这里用属性转发，保证游戏内快捷键和设置界面改的是同一份值。
+var wind_unit_index: int:
+	get:
+		return GameSettings.wind_unit_index
+	set(value):
+		GameSettings.set_wind_unit_index(value)
 const WIND_UNITS: Array[String] = ["kt", "m/s", "km/h"]
 
 # ------------------------- 音效（登陆用） -------------------------
@@ -48,6 +55,9 @@ var _rng := RandomNumberGenerator.new()
 ## 风季起点（年内第几天）。用已过去的天数判断是否满 12 个月。
 var _season_start_day := 0.0
 
+## 最佳路径数据集记录器（1.1.0）。格式参照 CMA，见 scripts/BestTrack.gd
+var best_track := BestTrackRecorder.new()
+
 
 func _ready() -> void:
 	_rng.randomize()
@@ -58,6 +68,7 @@ func _ready() -> void:
 	# 音效预设换了就重建播放器
 	GameSettings.changed.connect(_on_settings_changed)
 	_setup_sfx()
+	_sync_best_track_state()
 	Game.begin_session()
 	paused = false
 	# 风季模式下让时钟停在 12月30日 不回绕，结算时才不会漏掉跨年那一拍
@@ -93,7 +104,7 @@ func _physics_process(delta: float) -> void:
 	# ② 位置确定了，就能查它落在哪一格、那格的海温是多少
 	var pos := storm.current_world_position()
 	var cell := Const.cell_index_from_world(pos)
-	storm.sst_here = field.sst_at(cell) + SimClock.seasonal_sst_amplitude()
+	storm.sst_here = minf(Const.SST_READ_CAP, field.sst_at(cell) + SimClock.seasonal_sst_amplitude())
 	storm.latitude = storm.current_lonlat().y
 
 	# ③ 登陆判定
@@ -145,6 +156,9 @@ func _physics_process(delta: float) -> void:
 	path.set_live_position(pos, storm.wind_kt, storm.phase as int)
 	# 类别与巅峰值连续更新（参考就是在每轮循环里调的）
 	storm.tick_live()
+
+	# ⑨ 最佳路径采样（内部按 6 模拟小时节流，不是每 tick 都记）
+	best_track.sample(storm)
 
 	if storm.track_done() or storm.wind_kt <= 0.5:
 		_finish_storm()
@@ -272,6 +286,12 @@ func _wind_delta_rate(storm: Storm) -> float:
 	#    ⚠ 它**永不归零**，所以台风仍然能涨到 500+，只是要更久——
 	#      这是用户要的「不设硬顶、但要有遏制」。
 	delta /= 1.0 + storm.wind_kt / Const.mpi_for_sst(storm.sst_here)
+
+	# ⑨.5 超顶超增长抑制（**本工程附加，参考没有**）。
+	#      用户 2026-10-17 决定：超过 170 kt 之后额外压一下增长，但不要硬顶。
+	#      ⚠ **只压正增长**。衰减（负 ΔKt）不能除，否则减弱反而变慢。
+	if delta > 0.0:
+		delta /= Const.super_typhoon_damping(storm.wind_kt)
 
 	# ⑩ 眼壁置换调制。放在最后，作用在完整的 ΔKt 上。
 	delta = _apply_erc_modifier(storm, delta)
@@ -589,6 +609,8 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	active_storm = storm
 	path.clear_track()
 	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int)
+	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
+	best_track.begin_track(storm)
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
 	state_changed.emit()
 
@@ -606,6 +628,7 @@ func _finish_storm() -> void:
 	var rec := storm.to_record()
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
+	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
 	active_storm = null
 	path.live_visible = false
 	path.queue_redraw()
@@ -658,8 +681,21 @@ func rebuild_sfx() -> void:
 	_setup_sfx()
 
 
+## 最佳路径记录开关：风季模式**强制开启**（风季必须记录），否则跟随玩家设置。
+## 「勾选后开始记录此后新诞生的台风」——已经跑着的那个不补记，
+## 因为 begin_track 只在 _start_storm 里调。
+func _sync_best_track_state() -> void:
+	best_track.recording = season_mode or GameSettings.best_track_enabled
+
+## 音效预设变了才重建播放器 —— 「模拟设置」页里改个海温也会触发 changed，
+## 不该因此把音效播放器推倒重来。
+var _sfx_preset_last := ""
+
 func _on_settings_changed() -> void:
-	rebuild_sfx()
+	_sync_best_track_state()
+	if GameSettings.sfx_preset != _sfx_preset_last:
+		_sfx_preset_last = GameSettings.sfx_preset
+		rebuild_sfx()
 
 
 ## 按强度选音效。参考「台风//登陆」的分支是：
@@ -696,6 +732,8 @@ func sfx_missing() -> Array[String]:
 
 ## 时钟走完整年时触发（12月30日 → 下一年）。风季模式就靠这一拍结算。
 func _on_year_completed() -> void:
+	# 最佳路径：这一年结束就把这一年的台风写盘（跨年台风会延后，见 BestTrack.gd）
+	best_track.flush_year(GameSettings.best_track_dir)
 	if season_mode:
 		_end_season()
 

@@ -107,6 +107,20 @@ func next_storm_number() -> int:
 
 ## 记录一场「正常结束」的台风：累计 ACE + 存入战报列表。
 ## 台风总计数由 TyphoonSim 在结束时 +1（与编号系统分开管理）。
+## 本次要显示的台风列表。
+## 默认只列「达到热带风暴级及以上」（峰值 >= 30 kt）的场次；
+## 打开「记录热带扰动和低压」（GameSettings.record_disturbances）后，
+## **连 <30 kt 的热带扰动/热带低压也一并列出**。
+## ⚠ 只影响列表显示，不影响 ACE 排行榜（ACE 本身就只在台风级及以上累计）。
+func visible_records() -> Array[StormRecord]:
+	if GameSettings.record_disturbances:
+		return records
+	var out: Array[StormRecord] = []
+	for r in records:
+		if r.peak_wind_kt >= Const.STORM_NUMBER_THRESHOLD_KT:
+			out.append(r)
+	return out
+
 func add_record(rec: StormRecord) -> void:
 	records.append(rec)
 	total_ace += rec.ace
