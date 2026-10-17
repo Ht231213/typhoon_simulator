@@ -182,3 +182,12 @@ land_decay_tau_mountain2500=9
 |---|---|
 | **1.0.0** | 首个正式版。物理重写（指数陆地衰减、浅海热库上限、海温断崖修正）、海温数据外置到配置文件、界面文字清理、调试工具完善。 |
 | Alpha 1.0.0 | 首个可用版本。完成 Scratch → Godot 的渲染与交互移植。 |
+
+---
+
+## 九、许可证
+
+**GNU General Public License v3.0** —— 见 [LICENSE](LICENSE)。
+
+本工程是把一个 Scratch / TurboWarp 作品移植到 Godot 4 的重制版；
+原始工程的相关权利归其原作者所有。
