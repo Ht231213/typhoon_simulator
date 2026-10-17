@@ -21,10 +21,9 @@ const DAYS_PER_MONTH := Const.DAYS_PER_MONTH
 const MONTHS_PER_YEAR := Const.MONTHS_PER_YEAR
 const DAYS_PER_YEAR := DAYS_PER_MONTH * MONTHS_PER_YEAR      # 360
 
-## 正常速度：1 个模拟日 = 4 真实秒（沿用原 Scratch 工程）
-const SECONDS_PER_DAY_NORMAL := 4.0
-## 空闲加速：1 个模拟日 = 1 真实秒
-const SECONDS_PER_DAY_IDLE := 1.0
+# ⚠ 日长**不在这里写死** —— 统一从 `Const` 拿，而 `Const` 又是从
+#   `config/simulation.cfg` 读的。以前这里另写了一份 4.0 / 1.0，
+#   和 `Const.SECONDS_PER_DAY` 是两份，改一个不改另一个就会错位。
 
 # ------------------------- 状态 -------------------------
 var month := Const.START_MONTH
@@ -40,9 +39,9 @@ var clamp_at_year_end := false
 var _day_accumulator := 0.0
 
 
-## 当前速度：每「天」需要多少真实秒
+## 当前速度：每「天」需要多少真实秒。值来自 `config/simulation.cfg`
 func seconds_per_day() -> float:
-	return SECONDS_PER_DAY_IDLE if idle_boost else SECONDS_PER_DAY_NORMAL
+	return Const.SECONDS_PER_DAY_IDLE if idle_boost else Const.SECONDS_PER_DAY
 
 
 ## 从 month/day 派生的「年内第几天」，1月1日 = 0，12月30日 = 359
@@ -50,7 +49,15 @@ func sim_days() -> float:
 	return float((month - 1) * DAYS_PER_MONTH + (day - 1))
 
 
-func _process(delta: float) -> void:
+## ⚠ 必须跑在**物理帧**（`_physics_process`）上，不能跑渲染帧（`_process`）。
+##
+## 为什么：台风本体在 `TyphoonSim._physics_process` 里推进，用的是物理帧的 delta；
+## 日期时钟如果跑渲染帧，两者就是**两个不同的时基**。正常情况两边都累计真实时间、
+## 看不出差别，但**渲染卡顿时会分家**——Godot 每帧最多跑
+## `max_physics_steps_per_frame`（默认 8）次物理步，超了就丢时间，
+## 于是物理那边慢了、渲染这边照常走，**日期会跑到台风前面**。
+## 放在同一个时基上就永远是自洽的。
+func _physics_process(delta: float) -> void:
 	if not running:
 		return
 

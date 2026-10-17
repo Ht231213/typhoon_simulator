@@ -21,7 +21,7 @@ const GRID_OVERLAY_PATH := "MapLayer/GridOverlay"
 
 ## 调试面板（F6）。运行到 _ready 时才会被实例化出来。
 var debug_panel: Node = null
-## 海区探针（F7）：跟随鼠标显示所指海区的信息。
+## 海区探针：跟随鼠标显示所指海区的信息。由 T 键（海温查看模式）一并开关。
 var cell_probe: Node = null
 
 var _scale := 1.0
@@ -44,7 +44,7 @@ func _ready() -> void:
 	add_child(debug_panel)
 	debug_panel.setup(sim, field)
 
-	# 海区探针：跟随鼠标显示所指海区的信息（F7 开关）
+	# 海区探针：跟随鼠标显示所指海区的信息（由 T 键海温查看模式一并开关）
 	cell_probe = load("res://CellInspector.tscn").instantiate()
 	add_child(cell_probe)
 	cell_probe.setup(map_layer, field, sim)
@@ -91,10 +91,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			sidebar._on_notice("网格线：%s" % ("开" if field.show_grid_lines else "关"))
 			get_viewport().set_input_as_handled()
 		KEY_T:
-			# 显示/隐藏整个海温（气压）叠加层——192 个格子全部开关
-			field.show_field = not field.show_field
+			# 海温查看模式：**色块 + 鼠标探针，一开全给**（用户 2026-10-17 决定）。
+			#   色块 = 192 格的海温/气压颜色叠层，一眼看分布
+			#   探针 = 鼠标指哪看哪，显示该格的具体数值和冷水坑/地形等状态
+			var sst_view_on: bool = not field.show_field
+			field.show_field = sst_view_on
+			if cell_probe != null:
+				if sst_view_on:
+					cell_probe.open()
+				else:
+					cell_probe.close()
 			field.queue_redraw()
-			sidebar._on_notice("海温区块显示：%s" % ("开" if field.show_field else "关"))
+			sidebar._on_notice("海温查看：%s（色块 + 探针）" % ("开" if sst_view_on else "关"))
 			get_viewport().set_input_as_handled()
 		KEY_R:
 			# 重新采样陆地掩膜。⚠ 掩膜信息是 12 行 ASCII 图，
@@ -130,12 +138,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			# 调试面板：查看/修改运算输入与台风数值
 			if debug_panel != null:
 				debug_panel.toggle()
-			get_viewport().set_input_as_handled()
-		KEY_F7:
-			# 海区探针：跟随鼠标显示所指海区的信息（行列/编号/海温/季节增幅/冷水坑）
-			if cell_probe != null:
-				cell_probe.toggle()
-				sidebar._on_notice("海区探针：%s" % ("开（F7 关）" if cell_probe.visible else "关"))
 			get_viewport().set_input_as_handled()
 
 

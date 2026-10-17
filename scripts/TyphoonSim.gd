@@ -3,7 +3,8 @@ extends Node2D
 ## 模拟引擎：驱动台风沿路径移动、增强、登陆、消散。
 ##
 ## 时间结构沿用原 Scratch 工程的「连续积分 + 离散计日」：
-##   · _physics_process 由引擎固定在 100 Hz 调用 → 对应原工程的 forever + wait(0.01)
+##   · _physics_process 按物理帧推进（帧率由 config/simulation.cfg 决定，默认 30 Hz）
+##     → 对应原工程的 forever + wait(0.01)
 ##     这是数值稳定性的关键：原公式是开环正反馈，去掉这层节流会一路涨到几百节
 ##   · 每过一个模拟日（SimClock.day_advanced）做一次离散结算：气压、分级、巅峰、ACE
 ##
@@ -119,7 +120,7 @@ func _physics_process(delta: float) -> void:
 
 	# ⑥ 强度积分：参考的「计算风速增量」+「更新台风状态」。
 	#    ⚠ ΔKt 是**每个 tick 直接加的增量**，不要再乘 sim_delta、也不要再乘系数。
-	#    物理帧率已设成 100 Hz，和参考的 wait(0.01) 一一对应。
+	#    帧率由 config/simulation.cfg 决定（默认 30 Hz），对应参考的 wait(0.01) 每轮一次。
 	#    ⚠ 没有 MPI 上限——按你的决定删掉了，参考里也没有（能涨到几百节）。
 	storm.wind_kt = maxf(0.0, storm.wind_kt + _wind_delta_rate(storm))
 
@@ -155,14 +156,15 @@ func _physics_process(delta: float) -> void:
 ##
 ## ⚠ 返回的是**每个物理 tick 直接加到 Kt 上的增量**（参考里是 `change Kt by ΔKt`），
 ##   不是「节/天」的速率。所以调用处**不要**再乘任何时间量，也不要再乘系数。
-##   物理帧率已设成 100 Hz，和参考的 `wait(0.01)` 一一对应。
+##   帧率由 `config/simulation.cfg` 决定（默认 30 Hz），对应参考的 `wait(0.01)` 每轮一次。
 ##
-## 逐条照抄参考，数值与运算均未改动：
+## 逐条照抄参考，数值与运算均未改动 —— **唯一的例外是「效应-海温」**（见下和
+## `Const.sst_effect()`）：参考的三段分支在 27.5℃ / 30.0℃ 处有断崖，
+## 会让「近岸比外海更适合增强」，已按 Lead 的规格换成平滑门限。
 ##
 ##   海温差 = 当前海温 - 26.5
-##   效应-海温：ΔT>3.5 且不在陆地 → ΔT×0.8
-##              1<ΔT<3.5         → ΔT×0.3
-##              其余              → ΔT×0.8
+##   效应-海温：ΔT × (0.3 + 0.5 × smoothstep(26.5, 30.5, 海温))
+##              （参考是三段分支，数值与理由见 Const.sst_effect()）
 ##   效应-风切变：垂直风切变>10 → (垂直风切变−10)×−0.002，否则 0
 ##   效应-地转偏向力：北半球且纬度<2 → −1；南半球且纬度>−2 → −1；否则 0
 ##   随机扰动 = random(−0.05, 1.5)
@@ -179,15 +181,22 @@ func _physics_process(delta: float) -> void:
 ##
 ## ⚠ 山区（参考里额外 −1）暂缺：没有山区掩膜，你决定先不做。
 func _wind_delta_rate(storm: Storm) -> float:
-	# ① 海温效应
-	var sst_diff := storm.sst_here - 26.5
-	var sst_effect := 0.0
-	if sst_diff > 3.5 and not storm.landfall:
-		sst_effect = sst_diff * 0.8
-	elif sst_diff > 1.0 and sst_diff < 3.5:
-		sst_effect = sst_diff * 0.3
-	else:
-		sst_effect = sst_diff * 0.8
+	# ① 海温效应。
+	#    ⚠ 参考原文在这里是三段分支（ΔT>3.5 → ×0.8 / 1<ΔT<3.5 → ×0.3 / 其余 → ×0.8），
+	#      27.5℃ 和 30.0℃ 处各有一个断崖，会让「近岸比外海更适合增强」。
+	#      已按 Lead 的规格换成平滑门限，数值与理由见 Const.sst_effect()。
+	#
+	# ⚠ 陆地上要换成「陆地海温」——这是修「陆地减弱太慢」的关键，原因：
+	#   参考用「海温 ≤ 10℃」来编码陆地（原始海温数据里 39 个格子是 0~10），
+	#   但那张 12×16 表**只编码了 50°N 以北的三行**；中国 / 中南半岛 / 印度的陆地格
+	#   仍然写着 27~30℃，于是陆地上海温项照样是 +40 kt/日，
+	#   把参考的 −0.5/tick 陆地惩罚几乎完全抵消（实测近岸只有 −9.4 kt/日）。
+	#   我们的陆地掩膜是像素级（6 km，比那张 700 km 的表细 110 倍），
+	#   所以按掩膜判定为陆地时，海温直接按陆地取值。
+	var sst_for_effect := storm.sst_here
+	if storm.landfall:
+		sst_for_effect = Const.LAND_SST
+	var sst_effect := Const.sst_effect(sst_for_effect)
 
 	# ② 风切变效应
 	var shear_effect := 0.0
@@ -227,28 +236,34 @@ func _wind_delta_rate(storm: Storm) -> float:
 		season = 1.0 / 12.0
 	delta += season - _rng.randf_range(0.085, 0.09)
 
-	# ⑥ 陆地摩擦与山区（参考原文）：
+	# ⑥ 陆地/山区衰减 —— **本工程已改成指数式，参考原文是线性扣减**。
+	#
+	#    参考原文：
 	#      if (touching 陆地? or touching 山区?):
 	#        change ΔKt by -0.5
 	#        if touching 山区?:
 	#          change ΔKt by -1
-	#    所以「陆地」和「山区」是分开的两个判定，山区总共扣 -1.5。
-	if storm.landfall or storm.mountain:
-		delta -= 0.5
-		if storm.mountain:
-			delta -= 1.0
+	#    线性扣减的问题：**越弱掉得越快**，100 kt 登陆会 65→22→0 一路崩到零，
+	#    而现实是指数衰减、趋于约 26.7 kt 的背景强度（内陆残涡能拖好几天）。
+	#    现实标定见 docs/研究/01 第 ⑥ 节：真实范围 −30~−65 kt/24h，
+	#    而且**强台风初期绝对跌幅更大**（150 kt 登陆 +24h 现实约 75，线性只给 98）。
+	#
+	#    所以这里只记下"在陆地上"，真正的衰减在 ⑫ 按指数式施加
+	#    （必须放在 B′ 之后，否则会被 1/(1+Kt/MPI) 稀释掉）。
+	#    `land_sst` 仍然在 ① 里把海温项归零，两者配合。
+	var on_land: bool = storm.landfall or storm.mountain
 
 	# ⑦ 科氏项
 	delta += coriolis_effect * (storm.wind_kt / 20.0)
 
 	# ⑧ 变性附加衰减。参考没有这一项（它只靠「类型=-4」走温和公式）；
 	#    这是你决定保留的本工程附加项，原来按「节/天」写，
-	#    现在统一成每 tick 的增量：1 模拟天 = 4 真实秒 = 400 tick。
+	#    现在统一成每 tick 的增量：分母用 Const.TICKS_PER_DAY（随物理帧率自动变）。
 	match storm.phase:
 		Storm.Phase.TRANSITIONING:
-			delta -= Const.EXTRATROPICAL_WEAKENING / 400.0
+			delta -= Const.EXTRATROPICAL_WEAKENING / float(Const.TICKS_PER_DAY)
 		Storm.Phase.EXTRATROPICAL:
-			delta -= Const.EXTRATROPICAL_WEAKENING_DONE / 400.0
+			delta -= Const.EXTRATROPICAL_WEAKENING_DONE / float(Const.TICKS_PER_DAY)
 		_:
 			pass
 
@@ -260,6 +275,35 @@ func _wind_delta_rate(storm: Storm) -> float:
 
 	# ⑩ 眼壁置换调制。放在最后，作用在完整的 ΔKt 上。
 	delta = _apply_erc_modifier(storm, delta)
+
+	# ⑪ 浅海热库上限（**本工程附加，参考没有**）。
+	#    近岸浅海的暖水层被海底封顶，可提取热量少，撑不起超强台风。
+	#    水深档由 WPAC_SHELF20/50/100.png 逐像素判定（6.3 km/px），
+	#    见 OceanField.shelf_band_at_world()。
+	#
+	#    两条一起：①**超过上限就禁止再增强**（delta 压到 ≤0）
+	#              ②按超出量往下拽，让它逐渐回落到上限附近
+	#    只在上限之上才生效；浅水区低于上限时照常能增强（现实里浅海也常爆发）。
+	#
+	#    ⚠ 用户明确要求**不加移速调制**：不因为走得快就放宽上限。
+	var band: int = field.shelf_band_at_world(storm.current_world_position())
+	if band > 0:
+		var cap: float = Const.shelf_cap_kt(band)
+		if storm.wind_kt > cap:
+			delta = minf(delta, 0.0) - (storm.wind_kt - cap) * Const.SHELF_EXCESS_PULL
+
+	# ⑫ 陆地指数衰减（本工程对参考 ⑥ 的改写，理由见上）。
+	#    dKt = −(Kt − Vb) / τ × 每 tick 小时数，Vb ≈ 26.7 kt。
+	#    τ 按地形分三档：平地 30h / 1000m 山区 18h / 2500m 高山 12h。
+	#    放在 B′ 之后：这是物理衰减，不该被软限稀释。
+	if on_land:
+		var tau: float = Const.LAND_DECAY_TAU_PLAIN
+		var pos_now: Vector2 = storm.current_world_position()
+		if field.is_mountain2500_at_world(pos_now):
+			tau = Const.LAND_DECAY_TAU_MOUNTAIN2500
+		elif storm.mountain:
+			tau = Const.LAND_DECAY_TAU_MOUNTAIN
+		delta += Const.land_decay_delta(storm.wind_kt, tau)
 
 	return delta
 
@@ -379,9 +423,9 @@ func _update_erc(storm: Storm, sim_delta: float) -> void:
 ##
 ## ⚠ 参考用的 `repeat until` 是**瞬间加满**，不是每天慢慢爬——我原来写成「每天增长」是错的。
 func _update_shear(storm: Storm) -> void:
-	# ① 每 0.1 秒（100 Hz → 10 个 tick）随机游走一次
+	# ① 每 0.1 秒随机游走一次（tick 数 = 帧率 × 0.1，默认 30 Hz → 3 个 tick）
 	storm.shear_walk_counter += 1
-	if storm.shear_walk_counter >= int(round(Const.SHEAR_WALK_INTERVAL * 100.0)):
+	if storm.shear_walk_counter >= int(round(Const.SHEAR_WALK_INTERVAL * float(Const.TICKS_PER_SECOND))):
 		storm.shear_walk_counter = 0
 		storm.shear += _rng.randf_range(-Const.SHEAR_WALK_STEP, Const.SHEAR_WALK_STEP)
 		storm.shear = roundf(storm.shear)

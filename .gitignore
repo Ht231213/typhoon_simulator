@@ -25,3 +25,12 @@ _*.gd.uid
 _*.tscn
 _*.out
 _*.err
+
+# GMT 运行痕迹
+gmt.history
+*.cpt
+*.nc
+*.ps
+
+# 临时测试场景目录（跑完即删）
+_dev/

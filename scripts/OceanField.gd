@@ -34,13 +34,17 @@ var show_field := false
 # ============================ 调试可视化 ============================
 # 用来人工比对「掩膜到底贴不贴地图」。快捷键 F4 / F5。
 #
-#   F4 循环：关 → 陆地掩膜(红) → 1000m 山区(青) → 2500m 山区(黄)
+#   F4 循环：关 → 陆地(红) → 1000m 山区(青) → 2500m 山区(黄)
+#            → 水深<100m(绿) → 水深<50m(橙) → 水深<20m(紫)
 #            把对应掩膜的不透明区域染成半透明色，等比铺在地图上。
 #            对齐正确的话，色块的边缘应当**严丝合缝地贴着地图画的海岸线**。
+#            ⚠ 水深三档的掩膜**包含陆地**（陆地高程必然满足所有阈值），
+#              所以看的时候注意：绿色/橙色/紫色会盖住整块大陆，
+#              真正有效的是它们**在海面上的那部分**。
 #   F5 开关：游戏实际判定的陆地格子（192 格里哪些被当成陆地，橙色框）
 #            这个是物理真正用的东西，和上面那个原始掩膜可以对照看。
 
-## 0=关，1=陆地掩膜，2=1000m 山区，3=2500m 山区
+## 0=关，1=陆地掩膜，2=1000m 山区，3=2500m 山区，4=<100m，5=<50m，6=<20m
 var mask_view_mode := 0
 ## 是否高亮「游戏实际判定的陆地格子」
 var show_land_cells := false
@@ -50,13 +54,19 @@ const MASK_VIEW_PATHS: Array[String] = [
 	"res://assets/images/WPAC_LAND.png",
 	"res://assets/images/WPAC_LAND1000.png",
 	"res://assets/images/WPAC_LAND2500.png",
+	"res://assets/images/WPAC_SHELF100.png",
+	"res://assets/images/WPAC_SHELF50.png",
+	"res://assets/images/WPAC_SHELF20.png",
 ]
-## 每种掩膜叠加的颜色
+## 每种掩膜叠加的颜色（后三档要和红/青/黄区分得开）
 const MASK_VIEW_TINTS: Array[Color] = [
 	Color(0, 0, 0, 0),
 	Color(1.00, 0.15, 0.15),     # 陆地 = 红
 	Color(0.10, 1.00, 1.00),     # 1000m = 青
 	Color(1.00, 0.90, 0.10),     # 2500m = 黄
+	Color(0.25, 1.00, 0.35),     # 水深 <100m = 绿
+	Color(1.00, 0.55, 0.10),     # 水深 <50m  = 橙
+	Color(0.80, 0.35, 1.00),     # 水深 <20m  = 紫
 ]
 var _mask_view_cache := {}
 
@@ -66,6 +76,9 @@ func mask_view_name() -> String:
 		1: return "陆地掩膜（红）"
 		2: return "1000m 山区（青）"
 		3: return "2500m 山区（黄）"
+		4: return "水深 <100m（绿）"
+		5: return "水深 <50m（橙）"
+		6: return "水深 <20m（紫）"
 	return "关"
 
 
@@ -390,6 +403,90 @@ func mountain_cell_count() -> int:
 	return n
 
 
+# ------------------------- 2500m 高山（陆地衰减要分档用）-------------------------
+# 1000m 山区掩膜已经用于「山区」判定（参考的 -1 惩罚）；
+# 2500m 这档只用于**陆地指数衰减的时间尺度 τ**：
+# 穿过台湾中央山脉 / 吕宋高山那种，几小时内就能砍掉一大截，τ 要明显更短。
+const MOUNTAIN2500_MASK_PATH := "res://assets/images/WPAC_LAND2500.png"
+var _m2500_img: Image = null
+var _m2500_img_alpha := true
+
+
+func build_mountain2500_mask() -> void:
+	var r: Array = _load_terrain_image(MOUNTAIN2500_MASK_PATH)
+	_m2500_img = r[0] as Image
+	_m2500_img_alpha = bool(r[1])
+
+
+## 世界坐标是否落在 2500m 以上高山
+func is_mountain2500_at_world(pos: Vector2) -> bool:
+	if _m2500_img == null:
+		return false
+	return _sample_terrain(_m2500_img, pos, _m2500_img_alpha)
+
+
+# ============================ 水深分档（浅海热库）============================
+# 为什么需要：近岸浅海的暖水层被海底封顶，热量库小，撑不起超强台风。
+# 但**一格 = 6.25° × 6.67° ≈ 700 km，比整条大陆棚还宽**，所以绝不能用
+# 「离陆地几格」来算；这里和陆地/山区一样走**逐像素**（6.3 km/px，细 110 倍）。
+#
+# 三张掩膜是**嵌套**的（20m ⊆ 50m ⊆ 100m，已用逐像素比对验证 0 像素溢出），
+# 所以从最浅的开始问，命中即返回，最多查 3 次。
+#
+# 数组下标 = 档位：
+#   0 = 不限制（水深 > 100m 或不在浅水）
+#   1 = 水深 < 100m
+#   2 = 水深 < 50m
+#   3 = 水深 < 20m
+const SHELF_MASK_PATHS: Array[String] = [
+	"",
+	"res://assets/images/WPAC_SHELF100.png",
+	"res://assets/images/WPAC_SHELF50.png",
+	"res://assets/images/WPAC_SHELF20.png",
+]
+
+var _shelf_imgs: Array[Image] = []
+var _shelf_img_alphas: Array[bool] = []
+
+
+## 加载三张水深掩膜。缺失就当作没有浅海限制（不会崩，只是不生效）。
+func build_shelf_masks() -> void:
+	_shelf_imgs.clear()
+	_shelf_img_alphas.clear()
+	var ok := 0
+	for i in SHELF_MASK_PATHS.size():
+		if i == 0:
+			_shelf_imgs.append(null)
+			_shelf_img_alphas.append(true)
+			continue
+		var r: Array = _load_terrain_image(SHELF_MASK_PATHS[i])
+		_shelf_imgs.append(r[0] as Image)
+		_shelf_img_alphas.append(bool(r[1]))
+		if r[0] != null:
+			ok += 1
+	if ok == 3:
+		print("[OceanField] 水深掩膜已加载：20 / 50 / 100 m")
+	else:
+		print("[OceanField] ⚠ 水深掩膜只加载到 %d/3 张，浅海热库限制可能不完整" % ok)
+
+
+## 世界坐标落在哪一档水深处。0 = 不限制；1 = <100m；2 = <50m；3 = <20m。
+##
+## ⚠ **必须排除陆地**。三张 WPAC_SHELF*.png 按约定是「不排除陆地」生成的
+##   （陆地高程 > -20m，必然满足所有阈值），所以直接查会把整块大陆都判成
+##   "浅于 20m"。实测不排除的话全图 37.6% 会落到最浅档，浅海上限形同虚设。
+func shelf_band_at_world(pos: Vector2) -> int:
+	if is_land_at_world(pos):
+		return 0
+	for band in [3, 2, 1]:
+		if band >= _shelf_imgs.size():
+			continue
+		var img: Image = _shelf_imgs[band]
+		if img != null and _sample_terrain(img, pos, _shelf_img_alphas[band]):
+			return band
+	return 0
+
+
 ## 建立陆地掩膜。
 ## 优先用用户在场景里指定的贴图，其次用 LAND_MASK_PATH，都没有才退回地图像素启发式。
 ##
@@ -401,6 +498,9 @@ func mountain_cell_count() -> int:
 func build_land_mask(map_texture: Texture2D = null) -> void:
 	# 山区掩膜跟着一起建，保证两者用的是同一套面积占比判定
 	build_mountain_mask()
+	build_mountain2500_mask()
+	# 水深掩膜也一起建（浅海热库上限要用）
+	build_shelf_masks()
 
 	var mask_tex := land_mask_texture
 	if mask_tex == null and USE_LAND_MASK_FILE and ResourceLoader.exists(LAND_MASK_PATH):
@@ -603,19 +703,21 @@ func _draw() -> void:
 	for i in Const.CELL_COUNT:
 		var idx := i + 1
 		var rect := Const.cell_rect_world(idx)
-		var is_land := land_mask[i] == 1
 
 		if show_pressure:
 			# 气压场覆盖全部 192 格（含陆地）——陆地也有地面气压
 			var t: float = clampf((pressure[i] - 940.0) / 73.0, 0.0, 1.0)
 			draw_rect(rect, Color(0.10, 0.28, 0.85, 0.05 + 0.5 * (1.0 - t)))
 		else:
-			if is_land:
-				# 陆地上把海温色压暗，让地图的陆地纹理透出来
-				draw_rect(rect, Color(0.10, 0.10, 0.08, 0.38))
-			else:
-				var c := Const.sst_color(sst[i])
-				draw_rect(rect, Color(c.r, c.g, c.b, 0.42))
+			# 海温场同样覆盖**全部 192 格，包括陆地格**（用户 2026-10-17 要求
+			# 「按 T 显示所有格的温度」）。
+			#
+			# ⚠ 以前陆地格画的是暗色块、好让地图的陆地纹理透出来 —— 但那样
+			#   看不见陆地格的海温值，而仿真**是**拿陆地格的海温算强度的
+			#   （「陆地减弱太慢」的根因就是中国内陆格的海温写着 27~30℃）。
+			#   所以这里必须一视同仁画出颜色。想认陆地就按 F5（陆地格高亮）。
+			var c := Const.sst_color(sst[i])
+			draw_rect(rect, Color(c.r, c.g, c.b, 0.42))
 
 		if show_grid_lines:
 			draw_rect(rect, Color(1.0, 1.0, 1.0, 0.22), false, 1.0)

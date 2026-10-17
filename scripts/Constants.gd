@@ -4,6 +4,221 @@ extends Node
 ## 这里所有数值都从原 Scratch 工程的 project.json 里逐字提取，未做任何四舍五入，
 ## 方便你对照 docs/ 里的分析文档逐项核对。
 
+# ============================ 仿真基础节拍 ============================
+# 这些值**从配置文件读**（`config/simulation.cfg`），不在代码里写死。
+#
+#   ① 打包在游戏里的默认值：`res://config/simulation.cfg`
+#   ② 导出后想调参：把同名文件放到 **exe 同目录** 下的 `simulation.cfg`，会覆盖 ①
+#
+# 和玩家设置（`user://settings.cfg`：音量 / 全屏）是**完全分开**的两套东西：
+# 那份是运行时由玩家改的，这份是设计参数、随游戏发布。
+#
+# 背景：参考工程用 `wait(0.01)` 推进强度循环，名义 100 Hz，
+# 但 Scratch / TurboWarp 默认只有 30 fps，`wait(0.01)` 实际约 1 帧 —— 真实速率是 30 次/秒。
+# 按 100 Hz 照搬会把每模拟日的增量放大 3.33 倍。（用户 2026-10-15 指出）
+const SIM_CONFIG_RES_PATH := "res://config/simulation.cfg"
+const SIM_CONFIG_EXE_NAME := "simulation.cfg"
+
+## 物理帧率（Hz）。启动时读配置 → 写进 `Engine.physics_ticks_per_second`。
+var physics_ticks_per_second := 30
+## 1 模拟日 = 多少真实秒
+var SECONDS_PER_DAY := 4.0
+## 无活跃台风时的空闲加速：1 模拟日 = 多少真实秒
+var SECONDS_PER_DAY_IDLE := 1.0
+## 1 真实秒 = 多少模拟小时（由 SECONDS_PER_DAY 反推）
+var SIM_HOURS_PER_REAL_SECOND := 6.0
+
+## 下面几个由上面的值派生，见 `_sync_tick_rate()`
+var TICKS_PER_SECOND := 30
+var TICKS_PER_DAY := 120
+
+## 真正生效的配置文件路径（启动时会打到控制台）
+var sim_config_source := "（内置默认值）"
+
+
+func _ready() -> void:
+	_load_sim_config()
+	_load_sst_data()
+	_sync_tick_rate()
+
+
+## 读 `config/sst.txt` 里的 192 个基础海温值。
+## 支持 exe 同目录覆盖（导出后想换海温，放个同名文件到 exe 旁边就行）。
+##
+## ⚠ 和 `_read_sim_cfg` 一样要**手动剥 BOM**：用户拿记事本或 PowerShell 存过的
+##   文件很容易带 UTF-8 BOM，直接按字节解析会把第一个数字读坏。
+func _load_sst_data() -> void:
+	var path := SST_DATA_RES_PATH
+	var over := OS.get_executable_path().get_base_dir().path_join(SST_DATA_EXE_NAME)
+	if FileAccess.file_exists(over):
+		path = over
+	sst_data_source = path
+
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		push_error("[Const] 打不开海温数据：%s（将全部按 26.5℃ 处理）" % path)
+		BASE_SST = []
+		for i in CELL_COUNT:
+			BASE_SST.append(26.5)
+		return
+	var text := f.get_as_text()
+	f.close()
+	if text.begins_with("\uFEFF"):
+		text = text.substr(1)
+
+	# 去掉每行的 `#` 注释，剩下的按空白切
+	var clean := ""
+	for raw_line in text.split("\n"):
+		var line: String = raw_line
+		var hash_at := line.find("#")
+		if hash_at >= 0:
+			line = line.substr(0, hash_at)
+		clean += line + " "
+
+	var vals: Array[float] = []
+	for tok in clean.replace("\t", " ").split(" ", false):
+		var t: String = tok.strip_edges()
+		if t.is_valid_float():
+			vals.append(t.to_float())
+
+	if vals.size() != CELL_COUNT:
+		push_error("[Const] 海温数据应有 %d 项，实际读到 %d 项：%s" % [
+			CELL_COUNT, vals.size(), path])
+	# 补齐 / 截断，保证后面任何下标都不会越界
+	while vals.size() < CELL_COUNT:
+		vals.append(26.5)
+	if vals.size() > CELL_COUNT:
+		vals.resize(CELL_COUNT)
+	BASE_SST = vals
+	print("[Const] 海温数据：%s（%d 项）" % [sst_data_source, BASE_SST.size()])
+
+
+## 读 `config/simulation.cfg`，没有就用代码里的默认值。
+## exe 同目录下的 `simulation.cfg` 优先，方便导出后调参。
+func _load_sim_config() -> void:
+	var base := _read_sim_cfg(SIM_CONFIG_RES_PATH)
+	var base_ok := base.has_section("timing")
+
+	var over_path := OS.get_executable_path().get_base_dir().path_join(SIM_CONFIG_EXE_NAME)
+	var over := _read_sim_cfg(over_path)
+	var over_ok := over.has_section("timing")
+
+	if over_ok:
+		sim_config_source = over_path
+	elif base_ok:
+		sim_config_source = SIM_CONFIG_RES_PATH
+
+	physics_ticks_per_second = int(_cfg_num(base, base_ok, over, over_ok,
+		"physics_ticks_per_second", physics_ticks_per_second))
+	SECONDS_PER_DAY = _cfg_num(base, base_ok, over, over_ok,
+		"seconds_per_day", SECONDS_PER_DAY)
+	SECONDS_PER_DAY_IDLE = _cfg_num(base, base_ok, over, over_ok,
+		"seconds_per_day_idle", SECONDS_PER_DAY_IDLE)
+	COOLING_APPLY_INTERVAL_SECONDS = _cfg_num(base, base_ok, over, over_ok,
+		"cooling_apply_interval_seconds", COOLING_APPLY_INTERVAL_SECONDS)
+	SHEAR_WALK_INTERVAL = _cfg_num(base, base_ok, over, over_ok,
+		"shear_walk_interval_seconds", SHEAR_WALK_INTERVAL)
+
+	# 陆地海温（[ocean] 段）——台风在陆地上时海温按这个值算，见 TyphoonSim ①
+	LAND_SST = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "land_sst", LAND_SST)
+	# 浅海热库上限（[ocean] 段）
+	SHELF_CAP_100 = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "shelf_cap_100m", SHELF_CAP_100)
+	SHELF_CAP_50 = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "shelf_cap_50m", SHELF_CAP_50)
+	SHELF_CAP_20 = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "shelf_cap_20m", SHELF_CAP_20)
+	SHELF_EXCESS_PULL = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "shelf_excess_pull", SHELF_EXCESS_PULL)
+	# 陆地指数衰减（[ocean] 段）
+	LAND_DECAY_BG_KT = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "land_decay_bg_kt", LAND_DECAY_BG_KT)
+	LAND_DECAY_TAU_PLAIN = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "land_decay_tau_plain", LAND_DECAY_TAU_PLAIN)
+	LAND_DECAY_TAU_MOUNTAIN = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "land_decay_tau_mountain", LAND_DECAY_TAU_MOUNTAIN)
+	LAND_DECAY_TAU_MOUNTAIN2500 = _cfg_num_in(base, base_ok, over, over_ok,
+		"ocean", "land_decay_tau_mountain2500", LAND_DECAY_TAU_MOUNTAIN2500)
+
+	# 夹到合理范围，避免配置文件写错把游戏搞崩
+	physics_ticks_per_second = clampi(physics_ticks_per_second, 1, 1000)
+	SECONDS_PER_DAY = clampf(SECONDS_PER_DAY, 0.1, 600.0)
+	SECONDS_PER_DAY_IDLE = clampf(SECONDS_PER_DAY_IDLE, 0.05, SECONDS_PER_DAY)
+	COOLING_APPLY_INTERVAL_SECONDS = clampf(COOLING_APPLY_INTERVAL_SECONDS, 0.01, 60.0)
+	SHEAR_WALK_INTERVAL = clampf(SHEAR_WALK_INTERVAL, 0.01, 60.0)
+	# ⚠ 上限别卡到 10 —— 默认值 26.5 就是「海温项归零」的意思，卡 10 会被夹掉
+	LAND_SST = clampf(LAND_SST, -30.0, 40.0)
+	# 浅海上限：必须单调（越浅上限越低），且不能为负
+	SHELF_CAP_100 = clampf(SHELF_CAP_100, 0.0, 1000.0)
+	SHELF_CAP_50 = clampf(SHELF_CAP_50, 0.0, SHELF_CAP_100)
+	SHELF_CAP_20 = clampf(SHELF_CAP_20, 0.0, SHELF_CAP_50)
+	SHELF_EXCESS_PULL = clampf(SHELF_EXCESS_PULL, 0.0, 0.1)
+	# 陆地指数衰减：τ 必须为正且单调（越高越短）
+	LAND_DECAY_BG_KT = clampf(LAND_DECAY_BG_KT, 0.0, 60.0)
+	LAND_DECAY_TAU_PLAIN = clampf(LAND_DECAY_TAU_PLAIN, 1.0, 500.0)
+	LAND_DECAY_TAU_MOUNTAIN = clampf(LAND_DECAY_TAU_MOUNTAIN, 1.0, LAND_DECAY_TAU_PLAIN)
+	LAND_DECAY_TAU_MOUNTAIN2500 = clampf(LAND_DECAY_TAU_MOUNTAIN2500, 1.0,
+		LAND_DECAY_TAU_MOUNTAIN)
+
+	SIM_HOURS_PER_REAL_SECOND = 24.0 / SECONDS_PER_DAY
+	print("[Const] 仿真节拍配置：%s" % sim_config_source)
+	print("[Const] 帧率=%d Hz  1 模拟日=%.2f 秒  空闲=%.2f 秒  降温间隔=%.2f 秒  风切游走=%.2f 秒  陆地海温=%.1f℃" % [
+		physics_ticks_per_second, SECONDS_PER_DAY, SECONDS_PER_DAY_IDLE,
+		COOLING_APPLY_INTERVAL_SECONDS, SHEAR_WALK_INTERVAL, LAND_SST])
+
+
+## 读一个 .cfg 并解析。**手动读文本再 parse**，不要直接用 `ConfigFile.load()`：
+##
+## ⚠ `ConfigFile.load()` 遇到 **UTF-8 BOM** 会返回 OK 但解析出**空段**
+##   （实测 `get_sections()` 只拿到 `[""]`，`has_section("timing")` 为 false）。
+##   用户拿记事本 / PowerShell 存过的文件很容易带 BOM，那样配置会**静默失效**、
+##   悄悄退回代码默认值，很难查。这里统一剥掉 BOM 再解析。
+func _read_sim_cfg(path: String) -> ConfigFile:
+	var cfg := ConfigFile.new()
+	if not FileAccess.file_exists(path):
+		return cfg
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		push_warning("[Const] 打不开配置文件：%s" % path)
+		return cfg
+	var text := f.get_as_text()
+	f.close()
+	if text.begins_with("\uFEFF"):
+		text = text.substr(1)
+	var err := cfg.parse(text)
+	if err != OK:
+		push_warning("[Const] 配置文件解析失败（错误码 %d）：%s" % [err, path])
+	return cfg
+
+
+## 取一个配置值：[timing] 段。exe 旁边的覆盖文件优先，其次内置文件，最后用代码默认值
+func _cfg_num(base: ConfigFile, base_ok: bool, over: ConfigFile, over_ok: bool,
+		key: String, fallback: float) -> float:
+	return _cfg_num_in(base, base_ok, over, over_ok, "timing", key, fallback)
+
+
+## 取一个配置值（指定段）
+func _cfg_num_in(base: ConfigFile, base_ok: bool, over: ConfigFile, over_ok: bool,
+		section: String, key: String, fallback: float) -> float:
+	if over_ok and over.has_section_key(section, key):
+		return float(over.get_value(section, key))
+	if base_ok and base.has_section_key(section, key):
+		return float(base.get_value(section, key))
+	return fallback
+
+
+## 把配置里的帧率真正应用到引擎，并同步所有「按 tick 计数」的派生量。
+## ⚠ 必须在任何节点跑 _physics_process 之前调用（Const 是第一个 autoload，安全）。
+func _sync_tick_rate() -> void:
+	Engine.physics_ticks_per_second = physics_ticks_per_second
+	TICKS_PER_SECOND = maxi(1, physics_ticks_per_second)
+	TICKS_PER_DAY = maxi(1, int(round(SECONDS_PER_DAY * float(TICKS_PER_SECOND))))
+	# 每个 tick 代表多少模拟小时（陆地指数衰减要用）
+	HOURS_PER_TICK = 24.0 / float(TICKS_PER_DAY)
+	COOLING_APPLY_INTERVAL_TICKS = maxi(1, int(round(
+		COOLING_APPLY_INTERVAL_SECONDS * float(TICKS_PER_SECOND))))
+
 # ============================ 地图与网格 ============================
 ## 地图逻辑尺寸（世界坐标）。WPAC.png 原始是 3000x2400，比例 1.25，这里按比例缩小。
 const MAP_W := 1080.0
@@ -81,8 +296,8 @@ const SHEAR_MAX := 500.0
 # 参考工程自己的存档里 `巅峰风速 = 503.54`，说明它本来就这样。
 # 用户 2026-10-15 决定：不设硬顶（要大数值），改用下面两套「软」机制。
 
-## 一个模拟日等于多少物理 tick。1 天 = 4 真实秒 × 100 Hz = 400。
-const TICKS_PER_DAY := 400
+## （`TICKS_PER_SECOND` / `TICKS_PER_DAY` 定义在文件顶部「仿真基础节拍」一节，
+##   由 `config/simulation.cfg` + `_sync_tick_rate()` 算出，别在这里再声明。）
 
 # ------------------------- B′：MPI 软自限 -------------------------
 ## 海温 → 潜在最大强度（kt）。26.5℃ 基准给 100 kt，每升 1℃ 加 20 kt。
@@ -91,6 +306,50 @@ const TICKS_PER_DAY := 400
 ## **永不归零**，所以仍然能涨到大数值，只是越来越慢。
 static func mpi_for_sst(sst: float) -> float:
 	return maxf(30.0, 100.0 + (sst - 26.5) * 20.0)
+
+# ------------------------- 海温效应（原参考「效应-海温」）-------------------------
+# 参考原文是三段分支（ΔT = 当前海温 − 26.5）：
+#     ΔT > 3.5 且不在陆地 → ΔT × 0.8
+#     1.0 < ΔT < 3.5      → ΔT × 0.3
+#     其余                → ΔT × 0.8
+#
+# ⚠ 这个写法有两个**断崖**（严格大于号，台阶实际落在 27.5→27.6 和 29.9→30.0 这两步上，
+#   实测扫过一遍，见 task-2 的曲线测试）：
+#     27.5℃ → 0.80   27.6℃ → 0.33   （一步掉了 0.47）
+#     29.9℃ → 1.02   30.0℃ → 2.80   （一步涨了 2.75 倍）
+#   后果不只是数值难看，而是**方向错了**：夏季近岸浅水常 >30℃ 走强支、
+#   开阔洋面 29~30℃ 走弱支 → **近岸比外海更适合增强**，与实际相反
+#   （用户实测 8-9 月近岸 150 kt → 180 kt）。
+#
+# 改法（Lead 2026-10-16 定的规格，task-2）：保留「暖池才爆发」的设计意图，
+# 但把台阶换成**平滑门限**：
+#     系数 = 0.3 + 0.5 × smoothstep(26.5, 30.5, 海温)
+#   26.5℃ 给 0.3、30.5℃ 给 0.8，中间单调过渡，**处处连续**。
+#   两端的取值就是原来那两条直线（×0.3 与 ×0.8），所以冷端和高海温端行为不变，
+#   只有 1.0 < ΔT < 3.5 这一段被抬起来——它原来被系统性压低，
+#   而现实中 28~30℃ 恰恰是台风增强的主力区间（见 docs/研究/01 的 A 节）。
+#
+# ⚠ 顺带清掉的两处（都**不改变数值**）：
+#   · `not storm.landfall` 是**死代码**：陆地上 ΔT > 3.5 时第一支为假，
+#     第二支又要求 ΔT < 3.5 也为假 → 落进 `else` 仍是 ×0.8，与不在陆地时完全一样。
+#   · 原来的 `else: ΔT × 0.8` 和第一支同值，直接合并。
+#
+# ⚠ Godot 内置的 `smoothstep` 是**三次 Hermite**（两端导数为 0），不是直线段。
+#   端点值与规格给的 0.3 / 0.8 完全一致，中间比直线更平缓，仍然单调连续。
+const SST_EFFECT_BASE := 26.5          # 参考的基准海温，ΔT = 海温 − 它
+const SST_EFFECT_RAMP_LOW := 26.5      # 平滑门起点：系数 = 0.3
+const SST_EFFECT_RAMP_HIGH := 30.5     # 平滑门终点：系数 = 0.8
+const SST_EFFECT_FACTOR_LOW := 0.3     # 参考中间带（1<ΔT<3.5）的系数
+const SST_EFFECT_FACTOR_HIGH := 0.8    # 参考强支（ΔT>3.5）的系数
+
+
+## 原参考的「效应-海温」。返回值在 TyphoonSim._wind_delta_rate 里还要再
+## `×2 + 0.5` 才进主体公式，别在这里提前乘。
+static func sst_effect(sst: float) -> float:
+	var sst_diff := sst - SST_EFFECT_BASE
+	var t: float = smoothstep(SST_EFFECT_RAMP_LOW, SST_EFFECT_RAMP_HIGH, sst)
+	return sst_diff * (SST_EFFECT_FACTOR_LOW
+		+ (SST_EFFECT_FACTOR_HIGH - SST_EFFECT_FACTOR_LOW) * t)
 
 # ------------------------- 眼壁置换循环（ERC）-------------------------
 # 按真实气象学：强台风外围生成**第二圈眼墙** → 外眼墙收缩、切断内眼墙水汽 →
@@ -159,7 +418,8 @@ const ERC_FAIL_RECOVERY_DAYS := 1.2
 ## 随机游走幅度（参考：每 0.1 秒 `change 垂直风切变 by random(5, -5)`）
 const SHEAR_WALK_STEP := 5.0
 ## 随机游走的间隔（秒）
-const SHEAR_WALK_INTERVAL := 0.1
+## 随机游走间隔（秒）。**值由 config/simulation.cfg 决定**，见文件顶部。
+var SHEAR_WALK_INTERVAL := 0.1
 ## 初始风切变范围（参考在开始模拟前 `set 垂直风切变 = random(0, 30)`）
 const SHEAR_INIT_MAX := 30.0
 ## 变性中每天的额外衰减（节/天）。参考里没有这一项，是本工程保留的附加项。
@@ -248,28 +508,94 @@ static func cell_rect_world(index: int) -> Rect2:
 
 # ============================ 观测数据 ============================
 
-## 原始海温分布（192 项，行优先，单位 ℃）
-## ⚠ 数据来源：`docs/原始海温数据.txt`（用户提供，从左上至右下为 1..192）。
-##    2026-10-11 逐项核对过：**与原表完全一致**（当时误改过第 148 项，已改回 27）。
-const BASE_SST: Array[float] = [
-	3, 8, 3, 3, 8, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2,
-	10, 10, 10, 10, 10, 10, 3, 3, 3, 3, 3, 3, 3, 3, 3, 10,
-	12, 12, 12, 12, 12, 20, 20, 4, 4, 10, 10, 10, 10, 10, 12, 12,
-	14, 14, 14, 20, 20, 20, 20, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-	16, 16, 16, 21, 21, 21, 16, 16, 16, 16, 16, 16, 19, 19, 19, 19,
-	18, 18, 18, 23, 23, 28, 30, 31, 26, 30, 26, 26, 26, 26, 26, 26,
-	21, 27, 27, 27, 29, 26, 31, 26, 26, 31, 30, 26, 26, 26, 26, 26,
-	30, 27, 27, 28, 30, 30, 30, 30, 30, 27, 27, 27, 27, 26, 28, 28,
-	30, 30, 30, 30, 29, 29, 29, 29, 28, 28, 28, 28, 27, 29, 31, 30,
-	30, 30, 30, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
-	29, 29, 29, 29, 29, 26, 24, 29, 26, 26, 26, 26, 26, 26, 27, 27,
-	28, 28, 28, 28, 31, 31, 25, 23, 22, 25, 26, 26, 26, 26, 26, 26,
-]
+# ------------------------- 基础海温数据 -------------------------
+# ⚠ 数据本体在 **`config/sst.txt`**，不在代码里（用户 2026-10-17 决定）。
+#   想改海温直接改那个文本文件，不用碰 scripts/。
+#
+#   文件格式：忽略 `#` 注释和空行，空白分隔的数字都算；按 12 行 × 16 列排，
+#   行优先，`对应海区 = 行号 * 16 + 列号 + 1`（1..192，1 起算）。
+#
+#   数据来源：`docs/原始海温数据.txt`（用户提供），2026-10-11 逐项核对过与原表一致。
+const SST_DATA_RES_PATH := "res://config/sst.txt"
+const SST_DATA_EXE_NAME := "sst.txt"
+
+## 192 项基础海温（℃），启动时从文件读。**代码里不再写死数值。**
+var BASE_SST: Array[float] = []
+
+## 真正生效的 SST 数据来源（启动时打到控制台）
+var sst_data_source := "（未加载）"
+
+## 当台风被判定在陆地上时，海温按这个值算（陆地上没有海表面温度）。
+## 参考用「海温 ≤ 10℃」编码陆地；这里取 2.0（参考里最常见的陆地编码值）。
+## 值在 config/simulation.cfg 的 [ocean] 段里可调。
+var LAND_SST := 2.0
+
+# ------------------------- 浅海热库上限 -------------------------
+# 近岸浅海的暖水层被海底封顶 → 可提取的热量少 → 撑不起超强台风。
+# 水深档由 `WPAC_SHELF20/50/100.png` **逐像素**判定（6.3 km/px，比 700 km 的
+# 192 格细 110 倍），档位见 `OceanField.shelf_band_at_world()`：
+#   0 = >100m（不限制）  1 = <100m  2 = <50m  3 = <20m
+#
+# 数值依据（OHC ≈ 0.41 × (海温−26) × 暖水层厚度，kJ/cm²）：
+#   暖水层 20m / 30℃ → 33 kJ/cm²，低于快速增强门槛(50~60) → 撑不起强台风
+#   暖水层 50m / 30℃ → 82 kJ/cm²，能到 C2 左右
+#   暖水层 100m/ 30℃ → 164 kJ/cm²，完全支持
+#
+# ⚠ 用户 2026-10-17 明确要求：**不加移速调制**（不要因为走得快就放宽）。
+var SHELF_CAP_100 := 140.0
+var SHELF_CAP_50 := 110.0
+var SHELF_CAP_20 := 80.0
+## 超过上限后每 tick 往下拽的系数（0.004 → 超出 50 kt 时约 −24 kt/模拟日）
+var SHELF_EXCESS_PULL := 0.004
+
+
+## 某档水深的强度上限（kt）。0 档返回一个足够大的数 = 不限制。
+func shelf_cap_kt(band: int) -> float:
+	match band:
+		3: return SHELF_CAP_20
+		2: return SHELF_CAP_50
+		1: return SHELF_CAP_100
+	return 1.0e9
+
+
+# ------------------------- 陆地衰减（指数式）-------------------------
+# **本工程对参考的改写**，依据 `docs/研究/01` 第 ⑥ 节的现实标定。
+#
+# 参考原文只有一句 `ΔKt -= 0.5`（山区再 -1），是**线性**扣减：
+# 结果越弱掉得越快，会一路崩到 0。而现实是指数衰减、趋于一个背景强度
+#   V(t) = Vb + (V0 − Vb)·e^(−t/τ)
+# 强台风初期绝对跌幅大、弱台风拖很久（内陆残涡能维持好几天）。
+#
+# 实测对照（100 kt 登陆，τ=30h）：
+#     +12h ≈ 69 kt   +24h ≈ 51 kt   +48h ≈ 33 kt   渐近 26.7
+# 现实区间 −30 ~ −65 kt/24h（NHC「24h 减半」=50、Kaplan–DeMaria τ=10.5h = 33、
+# 中国统计约 80~85 但被弱台风摊薄）→ 取 τ=22h 对齐研究的分档表。
+#
+# τ 按地形分三档（研究结论：地形 > 移速 > 土壤湿度 > 大小结构）：
+#   平地 22h ｜ 1000m 山区 12h ｜ 2500m 高山 9h
+# 2500m 那档专门用来复现「穿过台湾中央山脉 / 吕宋高山」的急降。
+var LAND_DECAY_BG_KT := 26.7
+var LAND_DECAY_TAU_PLAIN := 22.0
+var LAND_DECAY_TAU_MOUNTAIN := 12.0
+var LAND_DECAY_TAU_MOUNTAIN2500 := 9.0
+
+## 每个 tick 代表多少模拟小时（由 TICKS_PER_DAY 反推，见 _sync_tick_rate）
+var HOURS_PER_TICK := 0.2
+
+
+## 陆地衰减的「每 tick 应扣多少」（正数 = 减弱）。
+## 指数式：dKt = −(Kt − Vb) / τ × 每 tick 小时数。
+## 低于背景强度时不扣（不然内陆残涡会被"越弱越涨"拉回 Vb，不合物理）。
+func land_decay_delta(wind_kt: float, tau_hours: float) -> float:
+	var excess: float = maxf(0.0, wind_kt - LAND_DECAY_BG_KT)
+	if excess <= 0.0 or tau_hours <= 0.0:
+		return 0.0
+	return -(excess / tau_hours) * HOURS_PER_TICK
 
 ## 原始地面气压（全部为标准大气压）
 const BASE_PRESSURE := 1013.0
 
-## 陆地区域（把 BASE_SST <= 10 的格子视为陆地，与原工程判定一致）
+## 陆地区域（参考把 BASE_SST <= 10 的格子视为陆地）
 const LAND_SST_THRESHOLD := 10.0
 
 ## 默认演示路径（经度、纬度），一条典型的西北太平洋台风：
@@ -317,11 +643,12 @@ const MONTHS_PER_YEAR := 12
 # ---- 时间模型（三者必须自洽）----
 # 原工程：路径点之间 1 秒走完，两点之间代表 6 小时；时间轴同样是 4 秒 = 1 天。
 # 6 小时/秒 × 4 秒 = 24 小时，正好 1 天 —— 这套换算是自洽的。
-const SIM_HOURS_PER_REAL_SECOND := 6.0     # 1 真实秒 = 6 模拟小时
+#
+# ⚠ `SIM_HOURS_PER_REAL_SECOND` 和 `SECONDS_PER_DAY` 现在是**变量**，
+#   定义在文件顶部「仿真基础节拍」一节，由 `config/simulation.cfg` 决定
+#   （`SECONDS_PER_DAY = 24 / SIM_HOURS_PER_REAL_SECOND`，两者永远自洽）。
 const SECONDS_PER_SEGMENT := 1.0           # 相邻两个路径点之间走 1 秒
 const HOURS_PER_SEGMENT := 6.0             # 这两点之间代表 6 小时的移动
-# 派生量：正常速度下 1 个模拟日 = 4 真实秒
-const SECONDS_PER_DAY := 24.0 / SIM_HOURS_PER_REAL_SECOND
 
 ## 自检要跑多少模拟日
 const SELFTEST_DAYS := 40
@@ -351,14 +678,17 @@ const COOLING_STEP := 0.05
 # 于是台风被自己的冷坑打成 10kt 死区，卡在那里不动。
 #
 # 所以：**起始等待时间不变**（仍按 COOLING_DWELL_NUMERATOR 算 tick），
-#       但降温本身每 COOLING_APPLY_INTERVAL_TICKS 个 tick 才执行一次。
+#       但降温本身每 COOLING_APPLY_INTERVAL_SECONDS 秒才执行一次。
 #
-# 取 50（= 2 次/秒）的效果：
+# 取 0.5 秒（= 2 次/秒）的效果：
 #     Kt≥150：0.09 × 2 = 0.18℃/秒 → 穿一格(约9秒)扣约 1.6℃
 #     Kt=50 ：0.0175 × 2 = 0.035℃/秒 → 扣约 0.3℃
 #     回升同样降到 0.1℃/秒，掉 2℃ 约 20 秒回来
-# 想更快/更慢就改这个数：调小=更猛，调大=更温和。
-const COOLING_APPLY_INTERVAL_TICKS := 50
+# ⚠ 现在按**秒**表达，不再写死 tick 数 —— 换物理帧率时自动换算（见 _sync_tick_rate）。
+#   想更快/更慢就改 `config/simulation.cfg` 里的 cooling_apply_interval_seconds。
+var COOLING_APPLY_INTERVAL_SECONDS := 0.5
+## 实际间隔（tick），由 `_sync_tick_rate()` 按上面的秒数 × 物理帧率算出
+var COOLING_APPLY_INTERVAL_TICKS := 15
 
 ## 低于这个海温就不再继续降温（参考：`if (item 对应海区 of 基础海温数据 > 20)`）
 const COOLING_SST_FLOOR := 20.0

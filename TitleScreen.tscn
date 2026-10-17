@@ -115,7 +115,7 @@ text = "设置"
 [node name="SettingsPanel" type="Control" parent="." unique_id=1507461435]
 unique_name_in_owner = true
 visible = false
-layout_mode = 3
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -212,7 +212,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "…"
 autowrap_mode = 2
-vertical_alignment = 0
 
 [node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=323294088]
 layout_mode = 2
