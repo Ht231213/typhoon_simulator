@@ -1,0 +1,13 @@
+[gd_resource type="Theme" format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-Regular.otf" id="1_e04sg"]
+
+[sub_resource type="FontVariation" id="FontVariation_4001u"]
+base_font = ExtResource("1_e04sg")
+variation_embolden = 0.4
+
+[resource]
+default_font = ExtResource("1_e04sg")
+RichTextLabel/fonts/bold_font = SubResource("FontVariation_4001u")
+RichTextLabel/fonts/bold_italics_font = SubResource("FontVariation_4001u")
+RichTextLabel/fonts/italics_font = ExtResource("1_e04sg")

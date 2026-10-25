@@ -29,7 +29,7 @@ func show_results(saved: bool) -> void:
 	if vis.is_empty():
 		save_label.text = "本局没有生成任何台风，未写入存档。"
 	elif saved:
-		save_label.text = "✔ 已写入存档：%s\n分类「%s」" % [Game.save_path_absolute(), Game.save_category()]
+		save_label.text = "✓ 已写入存档：%s\n分类「%s」" % [Game.save_path_absolute(), Game.save_category()]
 	else:
 		save_label.text = "⚠ 存档写入失败，请检查 %s" % Game.save_path_absolute()
 

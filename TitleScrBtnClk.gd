@@ -10,8 +10,9 @@ extends Control
 @onready var exit_button: Button = %ButtonExit
 ## 模拟设置（模式 / 风季），不是应用设置
 @onready var settings_panel: Control = %SettingsPanel
-## 应用设置（视频 / 音频选项卡）
-@onready var app_settings: Control = %AppSettings
+## 应用设置（视频 / 音频 / 模拟设置选项卡）。
+## ⚠ 它**不能**是场景里的静态实例 —— 见 `_ready()` 里的创建代码（BUG-1）。
+var app_settings: Control = null
 @onready var board_popup: AcceptDialog = %BoardPopup
 @onready var board_text: RichTextLabel = %BoardText
 
@@ -36,6 +37,17 @@ func _ready() -> void:
 	board_button.pressed.connect(_on_board_pressed)
 	settings_button.pressed.connect(_on_app_settings_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
+
+	# ⚠ BUG-1（2026-10-24）：设置界面**不能**用场景里的静态实例。
+	#   导出的场景里，「Control 做场景根的静态实例」会丢掉满屏锚点（锚点全 0、尺寸 0x0），
+	#   打包后整块设置缩在左上角、还没法用；编辑器里却完全正常，很难查。
+	#   ESC 暂停菜单用的是同一个 SettingsMenu 场景、但它是在运行时实例化的 → 一直正常。
+	#   这里改成和 PauseLayer 一样：运行时 load + add_child + 显式铺满，不再依赖场景实例。
+	app_settings = load("res://SettingsMenu.tscn").instantiate()
+	app_settings.name = "AppSettings"
+	add_child(app_settings)
+	app_settings.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	settings_panel.on_cancel = _on_settings_cancelled
 	settings_panel.visible = false
 	app_settings.on_closed = _on_app_settings_closed
@@ -92,13 +104,10 @@ func _build_board_text() -> String:
 			lines.append("    [color=#889]排名  总ACE     场次   时间[/color]")
 			for i in top:
 				var e: Dictionary = sorted[i]
-				var medal := ""
-				if i == 0:
-					medal = "🥇 "
-				elif i == 1:
-					medal = "🥈 "
-				elif i == 2:
-					medal = "🥉 "
+				# ⚠ 原来的奖牌 emoji（U+1F947/48/49）不在 Noto Sans SC 的 cmap 里
+				#   （网页版没系统字体 → 方框），改用字体自带的 ★；
+				#   名次数字本来就在后面打印，信息没少。
+				var medal := "★ " if i < 3 else ""
 				lines.append("    %s%-4d %8.2f  %3d 场  %s" % [
 					medal, i + 1,
 					float(e.get("total_ace", 0.0)),

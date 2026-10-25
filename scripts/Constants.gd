@@ -63,8 +63,7 @@ func _load_sst_data() -> void:
 		return
 	var text := f.get_as_text()
 	f.close()
-	if text.begins_with("\uFEFF"):
-		text = text.substr(1)
+	text = _strip_bom(text)
 
 	# 去掉每行的 `#` 注释，剩下的按空白切
 	var clean := ""
@@ -91,6 +90,23 @@ func _load_sst_data() -> void:
 		vals.resize(CELL_COUNT)
 	BASE_SST = vals
 	print("[Const] 海温数据：%s（%d 项）" % [sst_data_source, BASE_SST.size()])
+
+
+## 剥掉 UTF-8 BOM（U+FEFF）。
+##
+## ⚠ **不要**写成 `text.begins_with("\uFEFF")` —— 导出成编译版脚本（`script_export_mode=2`）时，
+##   那个字符串常量里的 U+FEFF 会被**吃掉、变成空串**；而 `begins_with("")` 恒为 true，
+##   结果每次都把文件的**第一个字符**剥掉：
+##     · `config/simulation.cfg` 首字符是 `;` → 第一行变成 `===…` → ConfigFile 报
+##       `Expected value, got ''=''`（错误码 43）→ 整份配置静默退回内置默认值
+##       （1.1.0 / 1.1.1 的导出包就是这样：陆地海温从 26.5℃ 掉到代码默认值）
+##     · `config/sst.txt` 首字符是 `#`，恰好是注释，剥掉也无所谓 → 所以这个 bug
+##       只在 `.cfg` 上暴露，`sst.txt` 看起来一切正常，极难查。
+##   用**码位**判断就不会被编译器优化掉。
+func _strip_bom(text: String) -> String:
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		return text.substr(1)
+	return text
 
 
 ## 读 `config/simulation.cfg`，没有就用代码里的默认值。
@@ -194,8 +210,7 @@ func _read_sim_cfg(path: String) -> ConfigFile:
 		return cfg
 	var text := f.get_as_text()
 	f.close()
-	if text.begins_with("\uFEFF"):
-		text = text.substr(1)
+	text = _strip_bom(text)
 	var err := cfg.parse(text)
 	if err != OK:
 		push_warning("[Const] 配置文件解析失败（错误码 %d）：%s" % [err, path])

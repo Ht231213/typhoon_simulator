@@ -159,7 +159,7 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 tooltip_text = "暂停/继续整个模拟：台风移动、强度与气压计算、日期推进全部停止。界面仍可操作。"
 theme_override_font_sizes/font_size = 17
-text = "⏸ 暂停模拟"
+text = "暂停模拟"
 
 [node name="StopButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=1916717013]
 unique_name_in_owner = true
@@ -175,7 +175,7 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 tooltip_text = "调整游戏内日期。风季模式下禁用（视为作弊）。"
 theme_override_font_sizes/font_size = 16
-text = "📅 调整日期"
+text = "调整日期"
 
 [node name="UnitButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=1453209340]
 unique_name_in_owner = true

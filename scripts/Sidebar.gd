@@ -120,19 +120,23 @@ func _refresh_button_visibility() -> void:
 	path_buttons_row.custom_minimum_size.y = PATH_ROW_HEIGHT
 	cancel_row.custom_minimum_size.y = CANCEL_ROW_HEIGHT
 
+	# ⚠ 按钮图标只能用 Noto Sans SC 覆盖的符号（▶ ＋ ■ ★ …）。
+	#   原来那 4 个 emoji 图标（U+23F3 / U+1F300 / U+23F8 / U+1F4C5）字体里没有字形，
+	#   Windows 版靠系统字体兜底而正常，**网页版没有系统字体 → 会显示成方框**
+	#   （2026-10-24 BUG-2 收尾时去掉，只留文字）。
 	add_button.disabled = (not can and not placing) or (sim.paused and not placing)
 	if placing:
 		add_button.disabled = not has_points          # 没标点就不能投放
 	elif cooling:
-		add_button.text = "⏳ 冷却中…"
+		add_button.text = "冷却中…"
 	elif sim.active_storm != null:
-		add_button.text = "🌀 模拟中…"
+		add_button.text = "模拟中…"
 	else:
 		add_button.text = "＋ 添加台风"
 
 	# 暂停按钮自己表述两种状态：没暂停时点它=暂停，已暂停时点它=继续
 	pause_button.disabled = over
-	pause_button.text = "▶ 继续模拟" if sim.paused else "⏸ 暂停模拟"
+	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
 	unit_button.text = "单位：%s" % sim.wind_unit()
 

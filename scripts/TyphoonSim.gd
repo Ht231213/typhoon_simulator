@@ -855,7 +855,7 @@ func status_lines() -> PackedStringArray:
 
 	# 冷却倒计时只在风季模式出现（并排放进同一行）
 	if _show_cooldown() and active_storm == null and not season_over:
-		var cool_text := "⏳ 还需 %.1f 天" % days_until_deploy() if on_deploy_cooldown() else "✔ 可投放"
+		var cool_text := "还需 %.1f 天" % days_until_deploy() if on_deploy_cooldown() else "✓ 可投放"
 		out.append("投放冷却：%s" % cool_text)
 
 	# ── 台风信息：横向「标签：值」成对排布 ──

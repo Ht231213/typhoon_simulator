@@ -172,6 +172,9 @@ land_decay_tau_mountain2500=9
 - **地图**：1772×1418 像素，100°×80°，约 **6.3 km/像素**
 - **海区网格**：16×12 = 192 格，每格约 700 km（仅用于海温/气压场渲染和记账）
 - **地形判定**：陆地 / 山区 / 水深全部走**逐像素**采样掩膜（比 700 km 的格子细 110 倍）
+- **字体**：**Noto Sans SC Regular**（SIL OFL 1.1）随包分发，在 `project.godot` 的
+  `gui/theme/custom_font` 里设为全局默认字体 —— 导出后的 Windows / Web 版**不再依赖系统字体**
+  （以前网页版没有系统字体，中文全是豆腐块）
 - **存档**：ACE 排行榜在 `user://ace_records.json`
 
 ---
@@ -192,6 +195,13 @@ land_decay_tau_mountain2500=9
 
 本工程是把一个 Scratch / TurboWarp 作品移植到 Godot 4 的重制版；
 原始工程的相关权利归其原作者所有。
+
+随包分发的第三方字体：
+
+- **Noto Sans SC** — Copyright 2012 Google Inc.，
+  以 **SIL Open Font License 1.1** 授权（可自由随包分发），
+  许可证全文见 [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt)。
+  只放了 Regular 一个字重，其余字重没有随包（省 40 MB）。
 ---
 
 ## 十、1.1.0 新增
@@ -237,3 +247,33 @@ land_decay_tau_mountain2500=9
 超过 **170 kt** 之后，正增长会额外除以 `1 + (Kt−170)/170`：
 增长逐级变慢，但**始终为正**——仍然能慢慢爬到 300~400 kt，不会硬顶。
 （可在 `config/simulation.cfg` 的 `[intensity]` 段调）
+
+---
+
+## 十一、导出与本地预览
+
+### Windows 版
+
+导出预设 `Windows Desktop`（exe + .pck）。先在 Godot 里导出，再把 `游戏导出/` 里的 zip 发出去即可。
+
+### 网页版（Web）
+
+导出预设 `Web`，产物是 `Typhoon1.1.1.html` / `.js` / `.wasm` / `.pck`。
+
+> ⚠ **不能直接双击 `.html` 打开**。Godot 4 的网页版用了多线程（`SharedArrayBuffer`），
+> 浏览器要求服务器返回 `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` 两个响应头；
+> `file://` 和 `python -m http.server` 都**不会**返回它们，直接打开一定白屏/报错。
+> 用仓库里的 `游戏导出/serve_web.py` 起本地服务：
+
+```bat
+python serve_web.py -d <导出目录>            :: 默认端口 8000，并自动打开浏览器
+python serve_web.py -d <导出目录> -p 8080    :: 指定端口
+python serve_web.py -d <导出目录> --no-browser
+```
+
+然后访问 `http://localhost:8000/Typhoon1.1.1.html`。
+
+- 只能用 `http://localhost` / `http://127.0.0.1` 访问；换成局域网 IP（`http://192.168.x.x`）时浏览器
+  不认为它是安全上下文，`SharedArrayBuffer` 依然不可用（浏览器规则，不是脚本问题）。
+- 字体已随包：**Noto Sans SC Regular**（SIL OFL 1.1），网页版不依赖系统字体；
+  粗体用 `FontVariation` 的 `variation_embolden` 合成（见 `assets/theme/main_theme.tres`）。

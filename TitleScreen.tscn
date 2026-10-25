@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://yt12bu26oigc" path="res://TitleScrBtnClk.gd" id="1_title"]
 [ext_resource type="Texture2D" uid="uid://ct6v6nb2axbt1" path="res://assets/images/12W_TRUECOLOR_20260731005000.png" id="2_bg"]
 [ext_resource type="Script" uid="uid://c8bs025dvtmyo" path="res://scripts/SettingsPanel.gd" id="3_settings"]
-[ext_resource type="PackedScene" uid="uid://c3t7ejrb0mtd3" path="res://SettingsMenu.tscn" id="4_appsettings"]
 [ext_resource type="AudioStream" uid="uid://bp3vumhaoww4" path="res://assets/music/titlescr.mp3" id="5_bgm"]
 
 [node name="TitleScreen" type="Control" unique_id=1988055323]
@@ -250,8 +249,3 @@ bbcode_enabled = true
 stream = ExtResource("5_bgm")
 volume_db = -4.0
 autoplay = true
-
-[node name="AppSettings" parent="." unique_id=316570692 instance=ExtResource("4_appsettings")]
-unique_name_in_owner = true
-visible = false
-anchors_preset = 0

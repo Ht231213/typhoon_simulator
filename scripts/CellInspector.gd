@@ -152,7 +152,7 @@ func _describe(world: Vector2, idx: int) -> String:
 	# ---- 冷水坑状态（用户重点要的）----
 	if drop > 0.001:
 		L.append("")
-		L.append("❄ 冷水坑：**是**（已被台风降 %.2f ℃）" % drop)
+		L.append("● 冷水坑：**是**（已被台风降 %.2f ℃）" % drop)
 		L.append("   当前海温 %.2f ℃（观测 %.2f）" % [cur, base])
 		if factor > 0.0:
 			L.append("   正在降温中，降温因子 %.2f" % factor)
