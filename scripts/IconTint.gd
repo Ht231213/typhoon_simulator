@@ -35,3 +35,45 @@ const C5_UNITS := [
 	15.0, 0.0, -5.0, -10.0, -15.0, -20.0, -25.0, -30.0, -35.0, -40.0,
 ]
 
+
+
+# ============================ 对外接口 ============================
+
+## C5+ 段的**色相偏移**（单位：度，负值 = 偏蓝紫）。
+## kt < 137 返回 0（不染色）；137~145 之间线性渐入，避免在 137 处出现硬折角。
+static func hue_shift_for(kt: float) -> float:
+	if kt < C5_START_KT:
+		return 0.0
+	var target := _c5_lookup(kt)
+	var ease := clampf((kt - C5_START_KT) / C5_EASE_KT, 0.0, 1.0)
+	return target * ease
+
+
+## **偏蓝强度** 0~1。来自 Sheet2 的 B 通道（165→100、170→150、175→200）。
+## kt < 165 返回 0（Sheet2 从 165 才开始有蓝色增益）。
+static func blue_mix_for(kt: float) -> float:
+	if kt <= 165.0:
+		return 0.0
+	var t := clampf((kt - 165.0) / 10.0, 0.0, 1.0)   # 165→175 对应 0→1
+	return t
+
+
+## 查 C5 表（每 5 kt 线性插值；<30 取首行；>185 按末段斜率外推）
+static func _c5_lookup(kt: float) -> float:
+	var n := C5_WINDS.size()
+	if kt <= C5_WINDS[0]:
+		return C5_UNITS[0]
+	if kt >= C5_WINDS[n - 1]:
+		var x0: float = C5_WINDS[n - 2]
+		var x1: float = C5_WINDS[n - 1]
+		var y0: float = C5_UNITS[n - 2]
+		var y1: float = C5_UNITS[n - 1]
+		return y1 + (y1 - y0) / (x1 - x0) * (kt - x1)
+	for i in range(n - 1):
+		if kt <= C5_WINDS[i + 1]:
+			var xa: float = C5_WINDS[i]
+			var xb: float = C5_WINDS[i + 1]
+			var ya: float = C5_UNITS[i]
+			var yb: float = C5_UNITS[i + 1]
+			return lerpf(ya, yb, (kt - xa) / (xb - xa))
+	return C5_UNITS[n - 1]
