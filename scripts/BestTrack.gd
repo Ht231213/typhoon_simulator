@@ -1,27 +1,33 @@
 class_name BestTrackRecorder
 extends RefCounted
-## 最佳路径数据集：记录器 + 导出器
+## 最佳路径数据集：**记录器**（采样 / 归档 / 跨年写盘）。
 ##
-## 格式参照**中国气象局热带气旋资料中心《CMA 最佳路径数据集》**
-## （tcdata.typhoon.org.cn/zjljsjj.html，2026-10-17 版说明）。
-## 规范里给的字段全部照搬，**填不了的按用户决定处理**：
-##   · EEEE（我国编号）→ `0000`（真实文件里 1949 年那份也是这个值）
-##   · OWD（沿海大风/南海最大风速）→ 每行末尾一个 `-`
-##
-## ⚠ 和真实数据的关键区别：本文件是**模拟器生成的**，开头有中英双语声明。
+## 具体写成什么格式交给 `scripts/best_track/` 下的 writer：
+##   · `CmaWriter`  —— 中国气象局《CMA 最佳路径数据集》（1.0/1.1 的老格式，输出保持不变）
+##   · `NoaaWriter` —— NOAA IBTrACS v04r01 CSV（1.2.0 起默认）
+## 本类**不碰格式细节**（声明块 / 表头 / 数据行 / 文件名主体全在 writer 里），
+## 所以加新格式不用动这里的公共接口。
 ##
 ## 用户 2026-10-17 的规则：
 ##   · 勾选后开始记录「此后新诞生的每个台风」；勾选时正在跑的那个不记
 ##   · 风季模式**强制开启**
 ##   · 游戏内一年结束（12月30日）时写成一个文件
-##   · 跨年台风**按生成年份归档，不拆分**
-##   · 文件名：`Best Track <系统时间YYMMDD>-<游戏内年份计数>.txt`
+##   · 跨年台风**按生成年份归档、不拆分**
 
-## 采样间隔（模拟小时）。CMA 是每 6 小时一个点。
-const SAMPLE_HOURS := 6.0
+## 默认导出格式：1.2.0 起是 NOAA/IBTrACS
+const DEFAULT_FORMAT := "noaa"
 
-## 1 kt = 多少 m/s（CMA 的 WND 用 m/s）
-const KT_TO_MS := 0.514444
+## 格式 id → writer 脚本。加新格式只要在这里加一行
+const WRITERS := {
+	"cma": preload("res://scripts/best_track/CmaWriter.gd"),
+	"noaa": preload("res://scripts/best_track/NoaaWriter.gd"),
+}
+
+## 当前格式，由 `TyphoonSim._sync_best_track_state()` 从 GameSettings 同步过来
+var format_id := DEFAULT_FORMAT
+
+## 导出相关的提示（写盘失败 / 目录回退 / 延后补写完成）。`TyphoonSim` 把它接到游戏内 notice。
+signal export_notice(message: String)
 
 ## 记录是否开启
 var recording := false
@@ -37,10 +43,21 @@ var _active: Array[Dictionary] = []
 
 ## 上一次写盘的文件路径（UI/调试显示用）
 var last_written_path := ""
+## 上一次写盘是否**回退到了默认目录**（配置的目录不可写）。TyphoonSim 用它做一次性提示 + 修正设置。
+var last_dir_was_fallback := false
 
 ## 被延后的写盘（跨年台风还没结束时）
 var _pending_flush_year := 0
 var _pending_flush_dir := ""
+
+
+## 按 format_id 取一个 writer 实例（每次新建，writer 无状态）
+func writer() -> RefCounted:
+	var script: Variant = WRITERS.get(format_id, null)
+	if script == null:
+		push_warning("[BestTrack] 未知导出格式 '%s'，回退 %s" % [format_id, DEFAULT_FORMAT])
+		script = WRITERS[DEFAULT_FORMAT]
+	return (script as Script).new()
 
 
 ## 有没有「出生于某一年」的台风还在跑
@@ -51,26 +68,63 @@ func _has_active_born_in(year: int) -> bool:
 	return false
 
 
-## 延后的那一年现在能写了吗
+## 延后的那一年现在能写了吗（台风结束后由 `end_track()` 调）
 func _write_pending_flush() -> void:
 	if _pending_flush_year <= 0:
 		return
 	var y := _pending_flush_year
+	var dir := _pending_flush_dir
 	_pending_flush_year = 0
+	_pending_flush_dir = ""
+	if _flush_tracks(dir, y) != "":
+		print("[BestTrack] 第 %d 年（延后）补写完成" % y)
+
+
+## 真正写盘：把「出生于 year」的台风取出来交给 writer。
+## 同一份逻辑给 `flush_year()` 和 `_write_pending_flush()` 共用（以前是两份几乎一样的代码）。
+##
+## ⚠ **导出目录不可写时要回退到默认目录**（1.2.0 修「游戏好像没法导出」）：
+##   玩家在「模拟设置 → 导出路径」里可能选到了**盘根 / 只读目录**（实测用户的
+##   `settings.cfg` 里是 `best_track_dir="G:/"`），旧代码写盘失败只 push_warning，
+##   游戏内没有任何提示 → 看起来就是「勾了最佳路径，一年跑完却什么文件都没有」。
+##   现在：失败 → 换 `default_export_dir()`（exe 旁边 BestTrack/）再试一次；
+##   回退成功就发 `export_notice` 让游戏内提示玩家「已改存到这里」。
+func _flush_tracks(export_dir: String, year: int) -> String:
 	var year_tracks: Array[Dictionary] = []
 	var remain: Array[Dictionary] = []
 	for t in tracks:
-		if int(t["birth_year"]) == y:
+		if int(t["birth_year"]) == year:
 			year_tracks.append(t)
 		else:
 			remain.append(t)
 	if year_tracks.is_empty():
-		return
+		return ""
 	tracks = remain
-	var path := _pick_file_path(_pending_flush_dir, y)
-	if _write_file(path, year_tracks, y):
+	var path := _pick_file_path(export_dir, year)
+	if _write_file(path, year_tracks, year):
 		last_written_path = path
-		print("[BestTrack] 第 %d 年（延后）导出 %d 个台风" % [y, year_tracks.size()])
+		last_dir_was_fallback = false
+		print("[BestTrack] 第 %d 年导出 %d 个台风（格式 %s）" % [year, year_tracks.size(), format_id])
+		return path
+
+	# ① 配置的目录写不了 → 回退默认目录（exe 旁边的 BestTrack/）
+	var fallback := default_export_dir()
+	if fallback != export_dir:
+		var p2 := _pick_file_path(fallback, year)
+		if _write_file(p2, year_tracks, year):
+			last_written_path = p2
+			last_dir_was_fallback = true
+			var msg := "导出目录不可写（%s），已改存到 %s" % [export_dir, fallback]
+			push_warning("[BestTrack] " + msg)
+			export_notice.emit(msg)
+			return p2
+
+	# ② 连默认目录都写不了（只读介质 / 权限）→ 放回待写列表，明确提示，别静默丢数据
+	tracks.append_array(year_tracks)
+	var fail_msg := "最佳路径写入失败：%s" % export_dir
+	push_error("[BestTrack] " + fail_msg)
+	export_notice.emit(fail_msg)
+	return ""
 
 
 func reset() -> void:
@@ -79,6 +133,7 @@ func reset() -> void:
 	tracks.clear()
 	_active.clear()
 	last_written_path = ""
+	last_dir_was_fallback = false
 
 
 ## 开始记录一个台风。记录关闭时直接返回。
@@ -124,6 +179,9 @@ func sample(storm) -> void:
 
 	var ll: Vector2 = storm.current_lonlat()
 	(d["samples"] as Array).append({
+		# 年份必须**逐点**记：跨年台风按生成年份归档、不拆分，写盘时的 write_year
+		# 只是文件名/头记录的年份，数据行要按采样当时的年份算（IBTrACS 的 ISO_TIME 用得到）
+		"year": year_index,
 		"day": SimClock.day,
 		"month": SimClock.month,
 		"hour": (seg * 6) % 24,
@@ -131,7 +189,9 @@ func sample(storm) -> void:
 		"lon": float(ll.x),
 		"pres": float(storm.central_pressure),
 		"kt": float(storm.wind_kt),
-		"marker": _marker_for(storm),
+		# 变性阶段（int(Storm.Phase)：0 热带 / 1 变性中 / 2 温带）。
+		# IBTrACS 的 NATURE 要从这里取；CMA 的 marker 由 CmaWriter 用 (kt, phase) 现算。
+		"phase": int(storm.phase),
 	})
 
 
@@ -156,31 +216,19 @@ func end_track(storm) -> void:
 ## 年份切换时调一次：把「生成于这一年」的台风写盘。
 ## ⚠ 跨年台风**按生成年份归档、不拆分** —— 所以如果还有同年出生的台风在跑，
 ##   就先把写盘**延后**，等它结束再写（否则它的轨迹会被截断）。
+##
+## ⚠ P0 bug（2026-10-25 修）：以前 `year_index += 1` 写在成功分支 `return path` 之后，
+##   写盘成功就**永远执行不到** → 从第 2 年起年份索引一直停在 1（文件名靠重名后缀变成 `-1_2`，
+##   数据行的年份也全是 0001）。现在改成**开头先抓 this_year、立刻自增**，各分支不再自增。
 func flush_year(export_dir: String) -> String:
 	var this_year := year_index
+	year_index += 1
 	if _has_active_born_in(this_year):
 		_pending_flush_year = this_year
 		_pending_flush_dir = export_dir
-		year_index += 1
+		print("[BestTrack] 第 %d 年还有同年台风在跑，写盘延后" % this_year)
 		return ""
-	var year_tracks: Array[Dictionary] = []
-	var remain: Array[Dictionary] = []
-	for t in tracks:
-		if int(t["birth_year"]) == this_year:
-			year_tracks.append(t)
-		else:
-			remain.append(t)
-	if year_tracks.is_empty():
-		year_index += 1
-		return ""
-	tracks = remain
-	var path := _pick_file_path(export_dir, this_year)
-	if _write_file(path, year_tracks, this_year):
-		last_written_path = path
-		print("[BestTrack] 第 %d 年导出 %d 个台风" % [this_year, year_tracks.size()])
-		return path
-	year_index += 1
-	return path
+	return _flush_tracks(export_dir, this_year)
 
 
 # ============================ 内部 ============================
@@ -192,127 +240,58 @@ func _index_of(storm) -> int:
 	return -1
 
 
-## GB/T 19201-2006 强度标记（按 m/s）
-func _marker_for(storm) -> int:
-	# 变性：第一个 9 表示变性完成
-	if storm.phase == Storm.Phase.EXTRATROPICAL:
-		return 9
-	var ms: float = float(storm.wind_kt) * KT_TO_MS
-	if ms < 10.8:
-		return 0
-	if ms <= 17.1:
-		return 1
-	if ms <= 24.4:
-		return 2
-	if ms <= 32.6:
-		return 3
-	if ms <= 41.4:
-		return 4
-	if ms <= 50.9:
-		return 5
-	return 6
-
-
+## 文件名主体 + 重名后缀（扩展名由 writer 决定）
+##
+## `export_dir` 的解析规则（用户 2026-10-30：UI 不给选，但 `config/simulation.cfg`
+## 的 `[export] best_track_dir` 可以调）：
+##   · 空字符串 → 游戏根目录下的 `BestTrack/`（= default_export_dir()）
+##   · **相对路径** → 按「游戏根目录」解析（exe 旁 / 工程根）
+##   · 绝对路径 → 原样使用
 func _pick_file_path(export_dir: String, for_year: int) -> String:
-	var dir := export_dir
+	var dir := export_dir.strip_edges()
 	if dir == "":
 		dir = default_export_dir()
+	elif not dir.is_absolute_path():
+		dir = _game_root().path_join(dir)
 	DirAccess.make_dir_recursive_absolute(dir)
 	var stamp := Time.get_datetime_dict_from_system()
 	var ymd := "%02d%02d%02d" % [int(stamp["year"]) % 100, int(stamp["month"]), int(stamp["day"])]
-	var base := dir.path_join("Best Track %s-%d" % [ymd, for_year])
-	var p := base + ".txt"
+	var w := writer()
+	var base: String = w.file_base(dir, ymd, for_year)
+	var ext: String = w.extension
+	var p: String = base + ext
 	var n := 2
 	while FileAccess.file_exists(p):
-		p = "%s_%d.txt" % [base, n]
+		p = "%s_%d%s" % [base, n, ext]
 		n += 1
 	return p
 
 
-## 默认导出目录：游戏根目录下的 BestTrack/
-func default_export_dir() -> String:
-	var root := ProjectSettings.globalize_path("res://")
+## 游戏根目录：导出版 = exe 所在目录；编辑器/直接跑 = 工程根。
+## ⚠ 必须用 `OS.has_feature("template")` 区分（1.2.0 修）：
+##   导出版里 `ProjectSettings.globalize_path("res://")` 返回的是**空串**（res:// 在 pck 里）。
+func _game_root() -> String:
+	var root := ""
+	if OS.has_feature("template"):
+		root = OS.get_executable_path().get_base_dir()
+	else:
+		root = ProjectSettings.globalize_path("res://")
 	if root == "":
 		root = OS.get_executable_path().get_base_dir()
-	return root.path_join("BestTrack")
+	return root
 
 
+## 默认导出目录：游戏根目录下的 BestTrack/
+func default_export_dir() -> String:
+	return _game_root().path_join("BestTrack")
+
+
+## 写盘：格式全交给 writer
 func _write_file(path: String, year_tracks: Array[Dictionary], write_year: int) -> bool:
-	var lines: PackedStringArray = []
-
-	# ---- 中英双语声明（用户要求：和真实数据区分开）----
-	lines.append("# ============================================================")
-	lines.append("# 本文件由「台风模拟器」生成，**不是真实观测资料**，不可用于科研或业务。")
-	lines.append("# This file is generated by a TYPHOON SIMULATOR and is NOT real")
-	lines.append("# observational data. Do not use it for research or operations.")
-	lines.append("# 格式仿照 CMA 最佳路径数据集，但内容全部为模拟结果。")
-	lines.append("# Format mimics the CMA Best Track dataset; all content is simulated.")
-	lines.append("# ============================================================")
-
-	for t in year_tracks:
-		lines.append(_header_line(t))
-		for s in (t["samples"] as Array):
-			lines.append(_data_line(s, write_year))
-
-	var f := FileAccess.open(path, FileAccess.WRITE)
-	if f == null:
-		push_warning("[BestTrack] 写不了文件：%s" % path)
+	if not writer().write_file(path, year_tracks, write_year):
 		return false
-	f.store_string("\n".join(lines) + "\n")
-	f.close()
 	print("[BestTrack] 已导出 %d 个台风 → %s" % [year_tracks.size(), path])
 	return true
-
-
-## 头记录。用户决定：名字字段用规范写的 **20** 字符（真实文件里是 35）。
-## 字段顺序和宽度（合计 58）：
-##   AAAAA(5) BBBB(4) CCC(3) DDDD(4) EEEE(4) F(1) G(1) H(20) I(8)
-func _header_line(t: Dictionary) -> String:
-	var samples: Array = t["samples"]
-	# BBBB = 年份后两位 + 两位编号。没有国际编号（没到 TS）时是 0000。
-	var bbbb := 0
-	if int(t["storm_number"]) > 0:
-		bbbb = (int(t["birth_year"]) % 100) * 100 + (int(t["storm_number"]) % 100)
-	var ccc := samples.size()
-	var dddd := int(t["dep_number"])
-	var eeee := 0                                  # 我国编号：我们填不了
-	var f_code := int(t["end_code"])
-	var g := 6
-	var hh := str(t["name_en"]).substr(0, 20)
-	# I...I = 数据集形成的日期。**按用户要求用游戏内时间**（不是系统时间）：
-	#   游戏内年份计数 + 月 + 日，例如 00010815。
-	#   ⚠ 文件名里的 YYMMDD 才是系统时间（见 _pick_file_path）。
-	var ii := "%04d%02d%02d" % [int(t["birth_year"]), int(t["birth_month"]), int(t["birth_day"])]
-	return "%s %s %s %s %s %d %d %s %s" % [
-		"66666",
-		"%04d" % bbbb,
-		"%3d" % ccc,
-		"%04d" % dddd,
-		"%04d" % eeee,
-		f_code,
-		g,
-		hh.rpad(20, " "),
-		ii,
-	]
-
-
-## 数据记录：
-##   YYYYMMDDHH(10) I(1) LAT(3) LONG(4) PRES(4) WND(8) 然后把 OWD 写成 `-`
-func _data_line(s: Dictionary, write_year: int) -> String:
-	var yyyy := "%04d" % write_year
-	var mm := "%02d" % int(s["month"])
-	var dd := "%02d" % int(s["day"])
-	var hh := "%02d" % int(s["hour"])
-	var lat := int(roundf(float(s["lat"]) * 10.0))
-	var lon := int(roundf(float(s["lon"]) * 10.0))
-	var pres := int(roundf(float(s["pres"])))
-	var ms := int(roundf(float(s["kt"]) * KT_TO_MS))
-	# 规范：WND=9 表示 <10 m/s，WND=0 表示缺测
-	if ms < 10:
-		ms = 9
-	var head := "%s%s%s%s %d %3d %4d %4d%8d" % [
-		yyyy, mm, dd, hh, int(s["marker"]), lat, lon, pres, ms]
-	return head + " -"
 
 
 func track_count() -> int:

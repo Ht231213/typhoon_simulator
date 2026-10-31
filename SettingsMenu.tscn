@@ -146,24 +146,6 @@ theme_override_font_sizes/font_size = 19
 text = "100%"
 horizontal_alignment = 2
 
-[node name="PresetRow" type="HBoxContainer" parent="Margin/Box/Rows/Pages/音频"]
-layout_mode = 2
-theme_override_constants/separation = 14
-
-[node name="PresetLabel" type="Label" parent="Margin/Box/Rows/Pages/音频/PresetRow"]
-custom_minimum_size = Vector2(130, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 19
-text = "音效预设"
-
-[node name="PresetOption" type="OptionButton" parent="Margin/Box/Rows/Pages/音频/PresetRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 44)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 19
-tooltip_text = "切换音效素材包，对应 assets/sfx/<预设名>/"
-
 [node name="AudioHint" type="Label" parent="Margin/Box/Rows/Pages/音频"]
 visible = false
 layout_mode = 2

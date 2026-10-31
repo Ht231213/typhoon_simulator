@@ -1,6 +1,6 @@
-[gd_resource type="Theme" format=3]
+[gd_resource type="Theme" format=3 uid="uid://ci0i6vrosmw3t"]
 
-[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-Regular.otf" id="1_e04sg"]
+[ext_resource type="FontFile" uid="uid://bgeorvsjtyup5" path="res://assets/fonts/NotoSansSC-Regular.otf" id="1_e04sg"]
 
 [sub_resource type="FontVariation" id="FontVariation_4001u"]
 base_font = ExtResource("1_e04sg")

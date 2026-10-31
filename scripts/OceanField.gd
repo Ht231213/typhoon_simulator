@@ -330,6 +330,38 @@ func _sample_terrain(img: Image, pos: Vector2, use_alpha: bool) -> bool:
 	return _is_land_sample(img.get_pixel(px, py), use_alpha)
 
 
+# ------------------------- 山区掩膜膨胀 -------------------------
+## 山区掩膜的**膨胀半径**（掩膜像素，1 px ≈ 6.3 km）。
+##
+## ⚠ 为什么必须膨胀（1.2.1 修的 bug）：
+##   1000m 掩膜里的山区往往是 **1~2 像素宽的细条**（逐像素核查：吕宋岛上 1000m 区域
+##   只占那块陆地的 6.2%，约 10~20 km 宽），而物理判定是**单像素采样** →
+##   典型穿越点几乎永远采不到「山区」，τ=14h 那档形同虚设；
+##   吕宋的 2500m 更是 **0 像素**，τ=9h 永远不触发。
+##   用 ±5 像素窗口（≈ ±31 km）取样 = 等效把掩膜**膨胀 5 像素**。
+const MOUNTAIN_DILATE_PX := 5
+
+
+## 膨胀采样：以 pos 对应像素为中心、边长 2r+1 的窗口内**命中任意一个**就算命中。
+## 只有山区判定用（陆地判定不需要——陆地是大块区域，单像素就够）。
+func _sample_terrain_dilated(img: Image, pos: Vector2, use_alpha: bool, radius: int) -> bool:
+	if img == null:
+		return false
+	var w := img.get_width()
+	var h := img.get_height()
+	var cx := clampi(int(pos.x / Const.MAP_W * float(w)), 0, w - 1)
+	var cy := clampi(int(pos.y / Const.MAP_H * float(h)), 0, h - 1)
+	if radius <= 0:
+		return _is_land_sample(img.get_pixel(cx, cy), use_alpha)
+	for dy in range(-radius, radius + 1):
+		var py := clampi(cy + dy, 0, h - 1)
+		for dx in range(-radius, radius + 1):
+			var px := clampi(cx + dx, 0, w - 1)
+			if _is_land_sample(img.get_pixel(px, py), use_alpha):
+				return true
+	return false
+
+
 func _load_terrain_image(path: String) -> Array:
 	if path.is_empty() or not ResourceLoader.exists(path):
 		return [null, true]
@@ -385,9 +417,10 @@ func build_mountain_mask() -> void:
 
 
 ## 世界坐标是否落在山区（参考里的「touching 基础系统//山区?」）
+## 用**膨胀采样**：掩膜里的山区是 1~2 px 的细条，单像素采样采不到（见 MOUNTAIN_DILATE_PX）
 func is_mountain_at_world(pos: Vector2) -> bool:
 	if USE_PIXEL_TERRAIN_TEST and _mountain_img != null:
-		return _sample_terrain(_mountain_img, pos, _mountain_img_alpha)
+		return _sample_terrain_dilated(_mountain_img, pos, _mountain_img_alpha, MOUNTAIN_DILATE_PX)
 	var idx := Const.cell_index_from_world(pos)
 	if idx < 1 or idx > mountain_mask.size():
 		return false
@@ -418,11 +451,11 @@ func build_mountain2500_mask() -> void:
 	_m2500_img_alpha = bool(r[1])
 
 
-## 世界坐标是否落在 2500m 以上高山
+## 世界坐标是否落在 2500m 以上高山（陆地衰减 τ 用；同样走膨胀采样）
 func is_mountain2500_at_world(pos: Vector2) -> bool:
 	if _m2500_img == null:
 		return false
-	return _sample_terrain(_m2500_img, pos, _m2500_img_alpha)
+	return _sample_terrain_dilated(_m2500_img, pos, _m2500_img_alpha, MOUNTAIN_DILATE_PX)
 
 
 # ============================ 水深分档（浅海热库）============================

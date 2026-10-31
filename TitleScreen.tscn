@@ -1,9 +1,8 @@
 [gd_scene format=3 uid="uid://mx871h4g6yb8"]
 
 [ext_resource type="Script" uid="uid://yt12bu26oigc" path="res://TitleScrBtnClk.gd" id="1_title"]
-[ext_resource type="Texture2D" uid="uid://ct6v6nb2axbt1" path="res://assets/images/12W_TRUECOLOR_20260731005000.png" id="2_bg"]
+[ext_resource type="Texture2D" uid="uid://daivxawe244lw" path="res://assets/images/2630_Champi.jpg" id="2_tu0on"]
 [ext_resource type="Script" uid="uid://c8bs025dvtmyo" path="res://scripts/SettingsPanel.gd" id="3_settings"]
-[ext_resource type="AudioStream" uid="uid://bp3vumhaoww4" path="res://assets/music/titlescr.mp3" id="5_bgm"]
 
 [node name="TitleScreen" type="Control" unique_id=1988055323]
 layout_mode = 3
@@ -14,26 +13,34 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_title")
 
-[node name="12wTruecolor20260731005000" type="Sprite2D" parent="." unique_id=17155122]
-position = Vector2(785, 328)
-texture = ExtResource("2_bg")
+[node name="Background" type="Sprite2D" parent="." unique_id=17155122]
+position = Vector2(866.99994, 367)
+scale = Vector2(0.78161705, 0.78161705)
+texture = ExtResource("2_tu0on")
 
-[node name="ColorRect" type="ColorRect" parent="12wTruecolor20260731005000" unique_id=631342153]
-offset_left = -944.00006
-offset_top = -831.0
-offset_right = 50.40448
-offset_bottom = 222.0
+[node name="ColorRect" type="ColorRect" parent="." unique_id=631342153]
+layout_mode = 0
+offset_left = -159.00006
+offset_top = -503.0
+offset_right = 835.4045
+offset_bottom = 550.0
 rotation = 0.40510625
 color = Color(0.011764706, 0.011764706, 0.011764706, 0.3529412)
 
 [node name="TitleLabel" type="Label" parent="." unique_id=654264117]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = 8.0
-offset_bottom = 8.0
+offset_left = 56.0
+offset_top = 52.0
+offset_right = 616.0
+offset_bottom = 148.0
+theme_override_colors/font_color = Color(1, 1, 1, 0.94)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.45)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 46
 text = "台风模拟"
+vertical_alignment = 1
 
 [node name="ButtonSingleTy" type="Button" parent="." unique_id=528605469]
 unique_name_in_owner = true
@@ -245,7 +252,18 @@ offset_right = 612.0
 offset_bottom = 411.0
 bbcode_enabled = true
 
-[node name="TitleBgm" type="AudioStreamPlayer" parent="." unique_id=759092681 groups=["music"]]
-stream = ExtResource("5_bgm")
-volume_db = -4.0
-autoplay = true
+[node name="VersionLabel" type="Label" parent="." unique_id=1313657814]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -34.0
+offset_right = 260.0
+offset_bottom = -12.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.42)
+theme_override_font_sizes/font_size = 14
+text = "v1.1.1"

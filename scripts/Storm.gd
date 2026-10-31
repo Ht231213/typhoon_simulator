@@ -25,6 +25,9 @@ enum Phase {
 var phase: Phase = Phase.TROPICAL
 ## 变性中已经过了多少模拟天（用于渐变进度）
 var transition_days := 0.0
+## 变性方向（**可逆**，用户 2026-10-30 明确要求）：
+##   false = 正在「热带 → 温带」；true = 正在「温带 → 热带」（回南、海温回升时）
+var reverting := false
 
 ## 兼容旧字段：是否已「完全」变性
 var extratropical: bool:
@@ -258,20 +261,55 @@ func _update_category() -> void:
 
 
 ## 推进变性过程。每个物理 tick 调用，days 是经过的模拟天数。
-## 触发条件（纬度 + 海温双条件）：北上到 TYPHOON_LAT_LIMIT 以北，且海温低于阈值。
-## 满足后进入「变性中」，持续 EXTRATROPICAL_TRANSITION_DAYS 天后转为完全温带气旋。
+##
+## 触发条件（纬度 + 海温双条件）：北上到 TYPHOON_LAT_LIMIT 以北，且海温低于阈值
+## → 进入「变性中」，持续 EXTRATROPICAL_TRANSITION_DAYS 天后变成完全温带气旋。
+##
+## ⚠ **变性是可逆的**（用户 2026-10-30 明确要求，对应现实的 tropical transition）：
+##   台风回到「纬度 < TYPHOON_LAT_LIMIT 且 SST > EXTRATROPICAL_SST_THRESHOLD」的暖水
+##   会从 EXTRATROPICAL 回退 TRANSITIONING → TROPICAL，而且**比正向慢**
+##   （回退要 EXTRATROPICAL_REVERT_DAYS = 正向 × 2.5）。
+##   方向记在 `reverting` 里；两个方向切换时按进度**按比例换算**，不会瞬变。
 func update_transition(days: float) -> void:
+	var too_far_north := latitude > Const.TYPHOON_LAT_LIMIT
+	var too_cold := sst_here < Const.EXTRATROPICAL_SST_THRESHOLD
+	var outgoing := too_far_north and too_cold      # 条件是否还在"往温带推"
+	var fwd: float = Const.EXTRATROPICAL_TRANSITION_DAYS
+	var rev: float = Const.EXTRATROPICAL_REVERT_DAYS
 	match phase:
 		Phase.TROPICAL:
-			var too_far_north := latitude > Const.TYPHOON_LAT_LIMIT
-			var too_cold := sst_here < Const.EXTRATROPICAL_SST_THRESHOLD
-			if too_far_north and too_cold:
+			if outgoing:
 				phase = Phase.TRANSITIONING
+				reverting = false
 				transition_days = 0.0
 		Phase.TRANSITIONING:
-			transition_days += days
-			if transition_days >= Const.EXTRATROPICAL_TRANSITION_DAYS:
-				phase = Phase.EXTRATROPICAL
+			if outgoing:
+				if reverting:
+					# 正在回热带时条件又变差：按剩余比例换算成正向进度，再继续往温带走
+					var progress := 1.0 - clampf(transition_days / rev, 0.0, 1.0)
+					reverting = false
+					transition_days = progress * fwd
+				transition_days += days
+				if transition_days >= fwd:
+					phase = Phase.EXTRATROPICAL
+					transition_days = 0.0
+			else:
+				if not reverting:
+					# 正在往温带走时条件转好：按已有进度换算成"还剩多少天回到热带"
+					var progress := clampf(transition_days / fwd, 0.0, 1.0)
+					reverting = true
+					transition_days = (1.0 - progress) * rev
+				transition_days -= days
+				if transition_days <= 0.0:
+					phase = Phase.TROPICAL
+					transition_days = 0.0
+					reverting = false
+		Phase.EXTRATROPICAL:
+			# 已完全变性：条件转好就进入「回热带」的慢速渐变
+			if not outgoing:
+				phase = Phase.TRANSITIONING
+				reverting = true
+				transition_days = rev
 
 
 ## 原「记录巅峰状态」

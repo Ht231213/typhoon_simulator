@@ -43,6 +43,15 @@ const WIND_UNITS: Array[String] = ["kt", "m/s", "km/h"]
 ## 登陆音效：0 = TS（热带风暴），1..5 = C1..C5
 const LANDFALL_FILES: Array[String] = ["TS.wav", "c1.wav", "c2.wav", "c3.wav", "c4.wav", "c5.wav"]
 var _sfx_players: Array[AudioStreamPlayer] = []
+## 事件音效（2026-10-30）：form 形成 / intensify 增强 / weaken 减弱 / dissipate 消散
+## 素材目前没有（SMCY 库只有 landfall 音效）→ 播放器建好但没有 stream = 静音，以后放素材自动生效
+const EVENT_SFX_KINDS: Array[String] = ["form", "intensify", "weaken", "dissipate"]
+var _event_players: Dictionary = {}
+## 事件音效冷却（毫秒）：防止档位在边界来回抖导致"滴滴滴"
+const EVENT_SFX_COOLDOWN_MS := 2000
+var _event_sfx_last_ms: Dictionary = {}
+## 上一 tick 的类别（用来判断升档/降档）；999 = 还没初始化
+var _prev_category := 999
 
 
 ## 音效路径由「音频设置」里的预设决定（GameSettings.landfall_sfx_path）
@@ -69,6 +78,9 @@ func _ready() -> void:
 	GameSettings.changed.connect(_on_settings_changed)
 	_setup_sfx()
 	_sync_best_track_state()
+	# 最佳路径导出失败/目录回退时，把提示透传给游戏内 notice（1.2.0）
+	if not best_track.export_notice.is_connected(_on_best_track_notice):
+		best_track.export_notice.connect(_on_best_track_notice)
 	Game.begin_session()
 	paused = false
 	# 风季模式下让时钟停在 12月30日 不回绕，结算时才不会漏掉跨年那一拍
@@ -156,11 +168,16 @@ func _physics_process(delta: float) -> void:
 	path.set_live_position(pos, storm.wind_kt, storm.phase as int)
 	# 类别与巅峰值连续更新（参考就是在每轮循环里调的）
 	storm.tick_live()
+	_check_category_sfx(storm)
 
 	# ⑨ 最佳路径采样（内部按 6 模拟小时节流，不是每 tick 都记）
 	best_track.sample(storm)
 
-	if storm.track_done() or storm.wind_kt <= 0.5:
+	# 消散判定：路径走完，或者**已经弱到残涡**（<15 kt）。
+	# ⚠ 阈值 15 kt（1.2.1 由 0.5 改来）：热带低压下限是 17 kt，<15 kt 已经不是
+	#   热带气旋而是残余环流了，没必要继续挂在地图上。
+	#   ⚠ 这条依赖陆地衰减的 Vb 已改成 8 kt —— 旧 Vb=26.7 时强度永远降不到 15，阈值形同虚设。
+	if storm.track_done() or storm.wind_kt <= 15.0:
 		_finish_storm()
 
 
@@ -313,8 +330,9 @@ func _wind_delta_rate(storm: Storm) -> float:
 			delta = minf(delta, 0.0) - (storm.wind_kt - cap) * Const.SHELF_EXCESS_PULL
 
 	# ⑫ 陆地指数衰减（本工程对参考 ⑥ 的改写，理由见上）。
-	#    dKt = −(Kt − Vb) / τ × 每 tick 小时数，Vb ≈ 26.7 kt。
-	#    τ 按地形分三档：平地 30h / 1000m 山区 18h / 2500m 高山 12h。
+	#    dKt = −(Kt − Vb) / τ × 每 tick 小时数，Vb = 8 kt（真实残涡 5~10 kt；
+	#    ⚠ 旧值 26.7 是 Kaplan–DeMaria 的环境背景风常数，被误当成消散地板）。
+	#    τ 按地形分三档：平地 18h / 1000m 山区 16h / 2500m 高山 9h。
 	#    放在 B′ 之后：这是物理衰减，不该被软限稀释。
 	if on_land:
 		var tau: float = Const.LAND_DECAY_TAU_PLAIN
@@ -611,8 +629,41 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int)
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
+	# 事件音效：形成（素材没有时静音）
+	_prev_category = 999
+	_play_event_sfx("form")
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
 	state_changed.emit()
+
+
+## 档位变化 → 增强/减弱音效（带冷却，防止档位在边界抖动时连响）
+func _check_category_sfx(storm: Storm) -> void:
+	var cat := int(storm.category)
+	if cat == _prev_category:
+		return
+	var prev := _prev_category
+	_prev_category = cat
+	if prev == 999:
+		return                          # 第一个 tick 只记状态
+	# 只在「命名台风」之间或跨越命名线时响；弱涡/温带档之间抖动太频繁
+	if cat < Const.CAT_NAMED and prev < Const.CAT_NAMED:
+		return
+	if cat > prev:
+		_play_event_sfx("intensify")
+	elif cat < prev:
+		_play_event_sfx("weaken")
+
+
+## 播放事件音效。没有素材（stream == null）就静音，不报错。
+func _play_event_sfx(kind: String) -> void:
+	var player: AudioStreamPlayer = _event_players.get(kind)
+	if player == null or player.stream == null:
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_event_sfx_last_ms.get(kind, -100000)) < EVENT_SFX_COOLDOWN_MS:
+		return
+	_event_sfx_last_ms[kind] = now
+	player.play()
 
 
 ## 台风「正常结束」（走完路径 / 减弱消散）。按 {1} 的规定：
@@ -629,6 +680,7 @@ func _finish_storm() -> void:
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
 	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
+	_play_event_sfx("dissipate")         # 事件音效：消散（没素材就静音）
 	active_storm = null
 	path.live_visible = false
 	path.queue_redraw()
@@ -664,6 +716,17 @@ func _setup_sfx() -> void:
 	for player in _sfx_players:
 		player.queue_free()
 	_sfx_players.clear()
+	for kind in _event_players.keys():
+		(_event_players[kind] as AudioStreamPlayer).queue_free()
+	_event_players.clear()
+	for kind in EVENT_SFX_KINDS:
+		var ep := AudioStreamPlayer.new()
+		ep.bus = GameSettings.BUS_SFX
+		add_child(ep)
+		var epath := GameSettings.event_sfx_path(kind)
+		if epath != "":
+			ep.stream = load(epath)   # 有素材才出声，没有就是静音
+		_event_players[kind] = ep
 	for i in LANDFALL_FILES.size():
 		var player := AudioStreamPlayer.new()
 		player.bus = GameSettings.BUS_SFX      # 走音效总线，受音频设置里的音效音量控制
@@ -686,6 +749,8 @@ func rebuild_sfx() -> void:
 ## 因为 begin_track 只在 _start_storm 里调。
 func _sync_best_track_state() -> void:
 	best_track.recording = season_mode or GameSettings.best_track_enabled
+	# 导出格式跟着设置走（中途切格式不清空已有轨迹：采样与格式无关，一年只写一次文件）
+	best_track.format_id = GameSettings.best_track_format
 
 ## 音效预设变了才重建播放器 —— 「模拟设置」页里改个海温也会触发 changed，
 ## 不该因此把音效播放器推倒重来。
@@ -733,9 +798,16 @@ func sfx_missing() -> Array[String]:
 ## 时钟走完整年时触发（12月30日 → 下一年）。风季模式就靠这一拍结算。
 func _on_year_completed() -> void:
 	# 最佳路径：这一年结束就把这一年的台风写盘（跨年台风会延后，见 BestTrack.gd）
-	best_track.flush_year(GameSettings.best_track_dir)
+	# ⚠ 1.2.0：游戏内 UI 不提供路径选择（用户 2026-10-30 决定删掉），
+	#   目录来自 `config/simulation.cfg` 的 `[export] best_track_dir`（空 = 游戏根 BestTrack/）。
+	best_track.flush_year(Const.EXPORT_BEST_TRACK_DIR)
 	if season_mode:
 		_end_season()
+
+
+## 最佳路径记录器发来的提示（目录不可写时回退默认目录等）→ 转成游戏内 notice
+func _on_best_track_notice(message: String) -> void:
+	notice.emit("[最佳路径] " + message)
 
 
 ## 保底检查：用「已过去的天数」判断，避免任何情况下漏掉结算。

@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Typhoon"
-config/version="1.1.1"
+config/version="1.2.0-beta.1"
 run/main_scene="res://TitleScreen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
@@ -31,12 +31,8 @@ window/stretch/mode="canvas_items"
 
 [gui]
 
-; 全局默认字体：Noto Sans SC（OFL 1.1，随包分发）。导出后的 Web 版没有系统字体，
-; 不设这个的话中文全是豆腐块。
-theme/custom_font="res://assets/fonts/NotoSansSC-Regular.otf"
-; Theme 只补 RichTextLabel 的粗体/斜体：引擎内置的 bold/italics 字体没有中日韩字形，
-; 网页版里 [b]/[i] 的中文仍会是方框（Windows 版靠系统字体兜底所以看不出来）。
 theme/custom="res://assets/theme/main_theme.tres"
+theme/custom_font="res://assets/fonts/NotoSansSC-Regular.otf"
 
 [physics]
 

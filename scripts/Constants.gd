@@ -35,6 +35,20 @@ var TICKS_PER_DAY := 120
 ## 真正生效的配置文件路径（启动时会打到控制台）
 var sim_config_source := "（内置默认值）"
 
+# ------------------------- 导出（1.2.0 新增，`[export]` 段）-------------------------
+## 最佳路径导出的初始 ISO 年份（**架空年份**，游戏内不显示年份）。
+## 游戏内 `year_index` 从 1 开始；写盘时 ISO 年 = EXPORT_INITIAL_YEAR + year_index − 1。
+var EXPORT_INITIAL_YEAR := 1
+## 导出时的风速上限（kt）。只夹**导出值**，游戏内物理不受影响。
+## 官方 IBTrACS 的 USA_WIND 文档范围是 0–300。
+var EXPORT_MAX_WIND_KT := 300.0
+## 是否把强度也填进 IBTrACS 的 USA 机构块。
+## 默认 false = 只填共享块，导出文件里**不出现任何国家机构名**（用户 2026-10-20 的要求）。
+var EXPORT_FILL_USA_AGENCY := false
+## 最佳路径导出目录（`[export] best_track_dir`）。**空 = 游戏根目录下的 BestTrack/**。
+## 用户 2026-10-30：游戏内 UI 不提供路径选择，但配置文件可以调。
+var EXPORT_BEST_TRACK_DIR := ""
+
 
 func _ready() -> void:
 	_load_sim_config()
@@ -162,6 +176,22 @@ func _load_sim_config() -> void:
 	LAND_DECAY_TAU_MOUNTAIN2500 = _cfg_num_in(base, base_ok, over, over_ok,
 		"ocean", "land_decay_tau_mountain2500", LAND_DECAY_TAU_MOUNTAIN2500)
 
+	# 导出（[export] 段）。只影响导出文件，不影响物理
+	EXPORT_INITIAL_YEAR = int(_cfg_num_in(base, base_ok, over, over_ok,
+		"export", "initial_year", float(EXPORT_INITIAL_YEAR)))
+	EXPORT_MAX_WIND_KT = _cfg_num_in(base, base_ok, over, over_ok,
+		"export", "max_wind_kt", EXPORT_MAX_WIND_KT)
+	EXPORT_FILL_USA_AGENCY = _cfg_bool_in(base, base_ok, over, over_ok,
+		"export", "fill_usa_agency", EXPORT_FILL_USA_AGENCY)
+	# 导出目录（空 = 游戏根目录 BestTrack/）。用户 2026-10-30：UI 不给选，但配置文件可调。
+	var dir_base: Variant = base.get_value("export", "best_track_dir", "") if base_ok else ""
+	var dir_over: Variant = over.get_value("export", "best_track_dir", "") if over_ok else ""
+	var dir_str := str(dir_over if dir_over != null and str(dir_over) != "" else dir_base)
+	EXPORT_BEST_TRACK_DIR = dir_str.strip_edges()
+	# 年份至少从 1 起（0000 年不是合法 ISO 年份）
+	EXPORT_INITIAL_YEAR = maxi(1, EXPORT_INITIAL_YEAR)
+	EXPORT_MAX_WIND_KT = maxf(1.0, EXPORT_MAX_WIND_KT)
+
 	# 夹到合理范围，避免配置文件写错把游戏搞崩
 	physics_ticks_per_second = clampi(physics_ticks_per_second, 1, 1000)
 	SECONDS_PER_DAY = clampf(SECONDS_PER_DAY, 0.1, 600.0)
@@ -233,6 +263,16 @@ func _cfg_num_in(base: ConfigFile, base_ok: bool, over: ConfigFile, over_ok: boo
 	return fallback
 
 
+## 取一个布尔配置值（指定段）。配置文件里写 `true/false`（ConfigFile 会存成 bool）
+func _cfg_bool_in(base: ConfigFile, base_ok: bool, over: ConfigFile, over_ok: bool,
+		section: String, key: String, fallback: bool) -> bool:
+	if over_ok and over.has_section_key(section, key):
+		return bool(over.get_value(section, key))
+	if base_ok and base.has_section_key(section, key):
+		return bool(base.get_value(section, key))
+	return fallback
+
+
 ## 把配置里的帧率真正应用到引擎，并同步所有「按 tick 计数」的派生量。
 ## ⚠ 必须在任何节点跑 _physics_process 之前调用（Const 是第一个 autoload，安全）。
 func _sync_tick_rate() -> void:
@@ -289,6 +329,9 @@ const TYPHOON_LAT_LIMIT := 45.0
 const EXTRATROPICAL_SST_THRESHOLD := 24.0
 ## 变性过程持续多少模拟天（渐变：热带 → 变性中 → 温带气旋）
 const EXTRATROPICAL_TRANSITION_DAYS := 2.0
+## 「温带 → 热带」回退耗时 = 正向 × 2.5（现实里热带变性比正向变性罕见，
+## 且比正向慢；用户 2026-10-30 要求可逆，Lead 要求 2~3 倍）
+const EXTRATROPICAL_REVERT_DAYS := EXTRATROPICAL_TRANSITION_DAYS * 2.5
 
 # ------------------------- 西风带 / 风切变 -------------------------
 ## 台风越过西风带纬度就开始受中纬西风影响（风切变上升、逐渐变性）。
@@ -620,14 +663,23 @@ func super_typhoon_damping(wind_kt: float) -> float:
 # 实测对照（100 kt 登陆，τ=30h）：
 #     +12h ≈ 69 kt   +24h ≈ 51 kt   +48h ≈ 33 kt   渐近 26.7
 # 现实区间 −30 ~ −65 kt/24h（NHC「24h 减半」=50、Kaplan–DeMaria τ=10.5h = 33、
-# 中国统计约 80~85 但被弱台风摊薄）→ 取 τ=22h 对齐研究的分档表。
+# 中国统计约 80~85 但被弱台风摊薄）。
+#
+# ⚠ **Vb 不是消散地板**：Kaplan–DeMaria 的 26.7 kt 是「环境背景风」拟合常数，
+#   拿它当背景值会让弱台风永远停在 26.7 kt（1.2.1 修）。真实残涡只有 **5~10 kt**
+#   → Vb 改成 8.0；配 τ=18h：100 kt 登陆 → +24h ≈26 → +48h ≈15 → +72h ≈11 kt。
+#
+# ⚠ **τ 按「游戏内驻留时间」标定，不能照抄现实 τ=10.5h**：
+#   游戏 1 模拟日 = 4 真实秒，台风移动是现实约 2 倍（现实穿越吕宋 12~18h，游戏 5~8h），
+#   照抄会「一登陆就没了」。τ=16h 反推：140 kt 过吕宋 → ≈98.7 kt（C3），
+#   符合实测「C5 过吕宋 6~12h 降到 C3」。
 #
 # τ 按地形分三档（研究结论：地形 > 移速 > 土壤湿度 > 大小结构）：
-#   平地 22h ｜ 1000m 山区 12h ｜ 2500m 高山 9h
+#   平地 18h ｜ 1000m 山区 16h ｜ 2500m 高山 9h
 # 2500m 那档专门用来复现「穿过台湾中央山脉 / 吕宋高山」的急降。
-var LAND_DECAY_BG_KT := 26.7
-var LAND_DECAY_TAU_PLAIN := 22.0
-var LAND_DECAY_TAU_MOUNTAIN := 12.0
+var LAND_DECAY_BG_KT := 8.0
+var LAND_DECAY_TAU_PLAIN := 18.0
+var LAND_DECAY_TAU_MOUNTAIN := 16.0
 var LAND_DECAY_TAU_MOUNTAIN2500 := 9.0
 
 ## 每个 tick 代表多少模拟小时（由 TICKS_PER_DAY 反推，见 _sync_tick_rate）
@@ -822,6 +874,95 @@ static func category_from_wind(kt: float) -> int:
 	return t
 
 
+## ------------------------- 图标「形态」15 档（1.2.0 新增）-------------------------
+##
+## 参考工程的图标不是按 `category_from_wind` 那 9 类切的，而是 15 档 `形态`
+## （见 docs/参考_图标伪代码.md §3）。这里只给**图标/配色**用，不动
+## `category_from_wind()`（它同时管侧栏文字/轨迹配色/最佳路径，改了会牵连一片）。
+##
+## 档位（和参考一一对应）：
+##   1  = 已转温带（EX，**不可逆**：参考里 `形态=1` 后不再按风档分类）
+##   2  = 14–25 kt（扰动）        3  = 24–34 kt（低压）
+##   4  = 33–64 kt（TS）          5  = 63–83 kt（强 TS）
+##   6  = 82–96 kt（C1）          7  = 95–113 kt（C2）
+##   8  = 112–137 kt（C3）        9  = 136–155 kt（C4）
+##   10 = 154–170 kt（C4+）       11 = 169–200 kt（C5）★开始变亮蓝
+##   12 = 199–300 kt（超顶超）    14 = >299 kt
+##   13 = 消散（<1 kt）           15 = 0–15 kt（残涡）
+const FORM_EX := 1
+const FORM_DB := 2
+const FORM_TD := 3
+const FORM_TS := 4
+const FORM_TS_PLUS := 5
+const FORM_C1 := 6
+const FORM_C2 := 7
+const FORM_C3 := 8
+const FORM_C4 := 9
+const FORM_C4_PLUS := 10
+const FORM_C5 := 11
+const FORM_SUPER := 12
+const FORM_DISSIPATING := 13
+const FORM_EXTREME := 14
+const FORM_REMNANT := 15
+
+
+## 风速 → 图标形态（15 档，不含「已转温带」——那个由调用方按 phase 覆盖成 FORM_EX）
+static func icon_form(kt: float) -> int:
+	var k := roundf(kt)
+	if k < 1.0:
+		return FORM_DISSIPATING
+	if k < 15.0:
+		return FORM_REMNANT
+	if k < 25.0:
+		return FORM_DB
+	if k < 34.0:
+		return FORM_TD
+	if k < 64.0:
+		return FORM_TS
+	if k < 83.0:
+		return FORM_TS_PLUS
+	if k < 96.0:
+		return FORM_C1
+	if k < 113.0:
+		return FORM_C2
+	if k < 137.0:
+		return FORM_C3
+	if k < 155.0:
+		return FORM_C4
+	if k < 170.0:
+		return FORM_C4_PLUS
+	if k < 200.0:
+		return FORM_C5
+	if k < 300.0:
+		return FORM_SUPER
+	return FORM_EXTREME
+
+
+## 15 档形态 → 旧 9 档分类（给**没写 [form] 段**的自定义方案兜底，保证还能出图标）
+static func form_to_category(form: int) -> int:
+	match form:
+		FORM_EX:
+			return CAT_EXTRATROPICAL
+		FORM_DB:
+			return CAT_DISTURBANCE
+		FORM_TD:
+			return CAT_DEPRESSION
+		FORM_TS, FORM_TS_PLUS:
+			return CAT_TROPICAL_STORM
+		FORM_C1:
+			return CAT_C1
+		FORM_C2:
+			return CAT_C2
+		FORM_C3:
+			return CAT_C3
+		FORM_C4, FORM_C4_PLUS:
+			return CAT_C4
+		FORM_C5, FORM_SUPER, FORM_EXTREME:
+			return CAT_C5
+		_:
+			return CAT_WEAK          # 消散 / 残涡 / 未知
+
+
 ## 侧栏「类别」栏的中文显示。
 ## 参考里给 −2/−1 分别起名「热带扰动」「热带低压」，0 起是命名台风，
 ## 1..5 直接用参考自己的 C1..C5 列表。
@@ -867,11 +1008,43 @@ static func sst_color(sst: float) -> Color:
 ## 台风路径颜色，逐个对应参考「台风中心.md」里按类型设的画笔颜色：
 ##   −4 #e8e8e8 / −3 #d8d8d8 / −2 #00caff / −1 #0090ff / 0 #1dff00
 ##    1 #ffff00 /  2 #ffd000 /  3 #ff7b00 /  4 #ff0000 / 5 #ff007b
+## 轨迹线配色（A6：匹配参考工程）。
+##
+## 以前是我们自己挑的一组颜色；2026-10-30 改成**从 SMCY1.3 图标外圈图里取主色**
+## （脚本：temp/sample_track_colors.py），这样轨迹线和图标是同一套色系。
+## 下标 = 分类 − CAT_EXTRATROPICAL：0=温带、1=弱、2=扰动、3=低压、4=TS、5..9=C1..C5
 const TRACK_COLORS: Array[Color] = [
-	Color("e8e8e8"), Color("d8d8d8"), Color("00caff"), Color("0090ff"),
-	Color("1dff00"), Color("ffff00"), Color("ffd000"), Color("ff7b00"),
-	Color("ff0000"), Color("ff007b"),
+	Color8(139, 145, 191),   # 温带（ex 蓝灰）
+	Color8(175, 174, 191),   # 弱（generic 灰）
+	Color8(179, 177, 191),   # 扰动（db 灰白）
+	Color8(88, 92, 191),     # 低压（td 蓝紫）
+	Color8(37, 208, 18),     # TS（绿）
+	Color8(208, 208, 42),    # C1（黄）
+	Color8(211, 155, 16),    # C2（橙黄）
+	Color8(222, 110, 15),    # C3（橙红）
+	Color8(223, 34, 15),     # C4（红）
+	Color8(208, 35, 213),    # C5（品红）
 ]
+
+
+## 温带段（phase=2）的线色：照参考工程 `option/RGB-EX.txt` 的表
+##   风速 60→(100,100,100) 65→(100,100,50) 70→(120,100,50) … 90→(200,100,50)
+## 表是 5 kt 一档，这里线性插值成连续函数。
+static func ex_track_color(kt: float) -> Color:
+	const WINDS := [60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0]
+	const RGBS := [
+		Vector3i(100, 100, 100), Vector3i(100, 100, 50), Vector3i(120, 100, 50),
+		Vector3i(140, 100, 50), Vector3i(160, 100, 50), Vector3i(180, 100, 50),
+		Vector3i(200, 100, 50),
+	]
+	if kt <= float(WINDS[0]):
+		return Color8(RGBS[0].x, RGBS[0].y, RGBS[0].z)
+	for i in range(1, WINDS.size()):
+		if kt <= float(WINDS[i]):
+			var t := (kt - float(WINDS[i - 1])) / (float(WINDS[i]) - float(WINDS[i - 1]))
+			var c: Vector3 = Vector3(RGBS[i - 1]).lerp(Vector3(RGBS[i]), clampf(t, 0.0, 1.0))
+			return Color8(int(c.x), int(c.y), int(c.z))
+	return Color8(RGBS[RGBS.size() - 1].x, RGBS[RGBS.size() - 1].y, RGBS[RGBS.size() - 1].z)
 
 static func track_color(kt: float) -> Color:
 	var cats := category_from_wind(kt)

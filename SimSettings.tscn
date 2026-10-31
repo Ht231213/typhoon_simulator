@@ -77,26 +77,6 @@ theme_override_font_sizes/font_size = 19
 tooltip_text = "只模拟 12 个月（1月1日 → 12月30日），结束后结算并写入 ACE 排行榜。进游戏后不可改。"
 text = "风季模式"
 
-[node name="UnitRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
-layout_mode = 2
-theme_override_constants/separation = 14
-
-[node name="UnitLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/UnitRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 0)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 19
-text = "单位设置"
-
-[node name="UnitOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/UnitRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
-layout_mode = 2
-theme_override_font_sizes/font_size = 19
-tooltip_text = "风速显示单位。只影响界面显示，不影响物理计算。"
-alignment = 2
-
 [node name="MeanSstRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content"]
 layout_mode = 2
 theme_override_constants/separation = 14
@@ -174,40 +154,23 @@ theme_override_font_sizes/font_size = 19
 tooltip_text = "把每场台风的路径点、强度、时间记录成数据集，用来和真实最佳路径做对比。"
 text = "最佳路径数据集"
 
-[node name="BestTrackDirRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
+[node name="BestTrackFormatRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="BestTrackDirLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
+[node name="BestTrackFormatLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackFormatRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "导出路径"
+text = "导出方式"
 
-[node name="BestTrackDirEdit" type="LineEdit" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
+[node name="BestTrackFormatOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackFormatRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
-placeholder_text = "默认：<游戏根>/BestTrack"
-tooltip_text = "数据集写到哪个目录。默认 <游戏根>/BestTrack，可点「浏览…」改。"
-caret_blink = true
-
-[node name="BestTrackBrowseButton" type="Button" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackDirRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(104, 40)
+custom_minimum_size = Vector2(200, 40)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-tooltip_text = "选择导出目录"
-text = "浏览…"
+tooltip_text = "导出的文件格式：NOAA 是 IBTrACS（国际通用），CMA 是中国气象局格式。两种格式共用同一份轨迹数据。"
+alignment = 1
 
-[node name="DirDialog" type="FileDialog" parent="."]
-unique_name_in_owner = true
-title = "选择最佳路径导出目录"
-size = Vector2i(760, 520)
-visible = false
-file_mode = 2
-access = 2

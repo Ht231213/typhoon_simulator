@@ -20,7 +20,6 @@ extends PanelContainer
 @onready var pause_button: Button = %PauseButton
 @onready var stop_button: Button = %StopButton
 @onready var date_button: Button = %DateButton
-@onready var unit_button: Button = %UnitButton
 @onready var clear_points_button: Button = %ClearPointsButton
 @onready var undo_point_button: Button = %UndoPointButton
 @onready var cancel_button: Button = %CancelButton
@@ -47,7 +46,6 @@ func _ready() -> void:
 	pause_button.pressed.connect(_on_pause_pressed)
 	stop_button.pressed.connect(_on_stop_pressed)
 	date_button.pressed.connect(_on_date_pressed)
-	unit_button.pressed.connect(_on_unit_pressed)
 	clear_points_button.pressed.connect(_on_clear_points_pressed)
 	undo_point_button.pressed.connect(_on_undo_point_pressed)
 	cancel_button.pressed.connect(_on_cancel_pressed)
@@ -98,7 +96,6 @@ func _refresh_button_visibility() -> void:
 		pause_button.visible = false
 		stop_button.visible = false
 		date_button.visible = false
-		unit_button.visible = false
 	else:
 		# ── 普通状态 ──
 		# 添加台风：仅手动模式（含风季）与未来的电影模式
@@ -113,8 +110,7 @@ func _refresh_button_visibility() -> void:
 		stop_button.visible = manual and not sim.season_mode and sim.active_storm != null
 		# 调整日期：仅手动 + 非风季（风季下算作弊）
 		date_button.visible = manual and not sim.season_mode
-		# 单位切换：以后移到设置里，暂时保留
-		unit_button.visible = true
+		# 单位切换按钮已删除（1.2.0）：设置 → 模拟设置 → 单位设置 里已经有了
 
 	# 两行始终保留高度，避免按钮显隐时侧栏跳动
 	path_buttons_row.custom_minimum_size.y = PATH_ROW_HEIGHT
@@ -138,7 +134,6 @@ func _refresh_button_visibility() -> void:
 	pause_button.disabled = over
 	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
-	unit_button.text = "单位：%s" % sim.wind_unit()
 
 
 func _on_storm_finished(_rec: Game.StormRecord) -> void:
@@ -213,11 +208,6 @@ func _on_pause_pressed() -> void:
 
 func _on_stop_pressed() -> void:
 	sim.stop_simulation()
-	refresh()
-
-
-func _on_unit_pressed() -> void:
-	sim.cycle_wind_unit()
 	refresh()
 
 

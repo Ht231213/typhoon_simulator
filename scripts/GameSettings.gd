@@ -15,9 +15,18 @@ const SAVE_PATH := "user://settings.cfg"
 const BUS_MUSIC := "Music"
 const BUS_SFX := "SFX"
 
-## 音效素材根目录下的所有预设（每个预设是一个子目录，里面有 landfall/*.wav）
-const SFX_PRESETS: Array[String] = ["zmrtysimu"]
-const DEFAULT_SFX_PRESET := "zmrtysimu"
+## 视觉/音效「方案」（用户 2026-10-30 决定拆两套）。
+## 一个方案同时决定三样东西（A3）：
+##   · 图标   `assets/icons/<方案>/`
+##   · 登陆特效 `assets/effects/<方案>/`
+##   · 登陆音效 `assets/sfx/<方案>/landfall/*.wav`
+## ⚠ Default 是旧版「简单圆圈」，SMCY1.3 是图标库那套 —— **互斥，不能混用**。
+const PRESET_SCHEMES: Array[String] = ["default", "smcy13"]
+const PRESET_LABELS := {
+	"default": "Default（简单圆圈）",
+	"smcy13": "SMCY1.3（图标库）",
+}
+const DEFAULT_PRESET_SCHEME := "default"
 
 # ------------------------- 设置项 -------------------------
 ## 音乐音量 0..1（线性，写入总线时转 dB）
@@ -26,8 +35,8 @@ var music_volume := 0.8
 var sfx_volume := 1.0
 ## 是否全屏
 var fullscreen := false
-## 音效预设名（对应 assets/sfx/<名字>/）
-var sfx_preset := DEFAULT_SFX_PRESET
+## 音效预设名（跟随方案，见 PRESET_SCHEMES）
+var sfx_preset := DEFAULT_PRESET_SCHEME
 
 # ------------------------- 模拟设置（1.1.0 新增）-------------------------
 # ⚠ 这些不是"玩家偏好"，而是**影响模拟结果的参数**。
@@ -47,8 +56,40 @@ var record_disturbances := false
 var best_track_enabled := false
 ## 最佳路径导出目录。空字符串 = 用默认目录（游戏根目录下的 BestTrack/）
 var best_track_dir := ""
+## 最佳路径导出格式："noaa"（IBTrACS，1.2.0 起默认）/ "cma"（中国气象局）
+var best_track_format := "noaa"
+## 允许的格式值 + UI 下拉顺序的**唯一真源**（sim 设置下拉按这个顺序建项，别处别抄）
+const BEST_TRACK_FORMATS: Array[String] = ["noaa", "cma"]
 ## 风速显示单位：0=kt 1=m/s 2=km/h（对应 TyphoonSim.WIND_UNITS）
 var wind_unit_index := 0
+
+# ------------------------- 图标 / 登陆特效方案（1.2.1 新增）-------------------------
+# 值就是 `assets/icons/<名字>/` 或 `assets/effects/<名字>/` 的文件夹名。
+# 设置界面每次打开都**重新扫描**（外部目录 + 内置），所以用户新放一个文件夹就多一个选项；
+# 文件夹被删也不用管——取素材时找不到会自动回退 `default` 方案。
+## 台风图标方案
+var icon_scheme := "default"
+## 登陆特效方案
+var effect_scheme := "default"
+## 「170 kt+ 亮蓝扩展」（B4）：勾上才把 ≥170 kt 的图标提亮/变白；
+## 默认关（变白后 SMCY 图标上的数字/闪电看不清）。只在方案 = smcy13 时显示这个勾选框。
+var icon_bright_ext := false
+## 当前方案名（图标/特效/音效统一由它决定，见 PRESET_SCHEMES）
+var preset_scheme := DEFAULT_PRESET_SCHEME
+
+
+## 切换方案：图标/特效/音效一起换（A3 要求"跟随同一个方案选择"）
+func set_preset_scheme(name: String) -> void:
+	if not PRESET_SCHEMES.has(name):
+		name = DEFAULT_PRESET_SCHEME
+	if name == preset_scheme:
+		return
+	preset_scheme = name
+	icon_scheme = name
+	effect_scheme = name
+	sfx_preset = name
+	_save()
+	changed.emit()
 
 
 func _ready() -> void:
@@ -136,7 +177,7 @@ func set_fullscreen(value: bool) -> bool:
 
 
 func set_sfx_preset(preset: String) -> void:
-	if SFX_PRESETS.has(preset) and preset != sfx_preset:
+	if PRESET_SCHEMES.has(preset) and preset != sfx_preset:
 		sfx_preset = preset
 		_save()
 		changed.emit()
@@ -173,10 +214,26 @@ func sfx_root() -> String:
 	return "res://assets/sfx/%s/" % sfx_preset
 
 
-## 登陆音效路径。index：0 = TS，1..5 = C1..C5
+## 登陆音效路径。index：0 = TS，1..5 = C1..C5。
+## ⚠ 两种素材格式：默认方案是 `.wav`，SMCY1.3 是官方 `.ogg` → 先找 ogg 再找 wav。
 func landfall_sfx_path(index: int) -> String:
-	const FILES: Array[String] = ["TS.wav", "c1.wav", "c2.wav", "c3.wav", "c4.wav", "c5.wav"]
-	return sfx_root() + "landfall/" + FILES[clampi(index, 0, FILES.size() - 1)]
+	const FILES: Array[String] = ["TS", "c1", "c2", "c3", "c4", "c5"]
+	var base := sfx_root() + "landfall/" + FILES[clampi(index, 0, FILES.size() - 1)]
+	return _first_existing([base + ".ogg", base + ".wav"])
+
+
+## 事件音效（2026-10-30 新增）：form 形成 / intensify 增强 / weaken 减弱 / dissipate 消散。
+## 素材**目前没有**（SMCY 库里只有 landfall 音效）→ 返回 ""，游戏里就是静音，以后放了素材自动生效。
+func event_sfx_path(kind: String) -> String:
+	var base := sfx_root() + kind
+	return _first_existing([base + ".ogg", base + ".wav"])
+
+
+func _first_existing(paths: Array) -> String:
+	for p in paths:
+		if ResourceLoader.exists(p):
+			return p
+	return ""
 
 
 # ============================ 存档 ============================
@@ -187,12 +244,17 @@ func _save() -> void:
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
 	cfg.set_value("audio", "sfx_preset", sfx_preset)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.set_value("video", "preset_scheme", preset_scheme)
+	cfg.set_value("video", "icon_bright_ext", icon_bright_ext)
+	cfg.set_value("video", "icon_scheme", icon_scheme)
+	cfg.set_value("video", "effect_scheme", effect_scheme)
 	# 模拟设置
 	cfg.set_value("sim", "mean_sst", mean_sst)
 	cfg.set_value("sim", "seasonal_amplitude", seasonal_amplitude)
 	cfg.set_value("sim", "record_disturbances", record_disturbances)
 	cfg.set_value("sim", "best_track_enabled", best_track_enabled)
 	cfg.set_value("sim", "best_track_dir", best_track_dir)
+	cfg.set_value("sim", "best_track_format", best_track_format)
 	cfg.set_value("sim", "wind_unit_index", wind_unit_index)
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
@@ -206,9 +268,19 @@ func _load() -> void:
 	music_volume = clampf(float(cfg.get_value("audio", "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx_volume", sfx_volume)), 0.0, 1.0)
 	fullscreen = bool(cfg.get_value("video", "fullscreen", fullscreen))
-	var preset := str(cfg.get_value("audio", "sfx_preset", sfx_preset))
-	if SFX_PRESETS.has(preset):
-		sfx_preset = preset
+	# 方案（图标+特效+音效一起）。旧的 `sfx_preset="zmrtysimu"` 视同 Default（旧版那套素材）。
+	var scheme := str(cfg.get_value("video", "preset_scheme", ""))
+	if scheme == "":
+		scheme = str(cfg.get_value("audio", "sfx_preset", DEFAULT_PRESET_SCHEME))
+	if scheme == "zmrtysimu":
+		scheme = "default"
+	if not PRESET_SCHEMES.has(scheme):
+		scheme = DEFAULT_PRESET_SCHEME
+	preset_scheme = scheme
+	icon_scheme = scheme
+	effect_scheme = scheme
+	sfx_preset = scheme
+	icon_bright_ext = bool(cfg.get_value("video", "icon_bright_ext", icon_bright_ext))
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)
 	seasonal_amplitude = clampf(
@@ -216,6 +288,10 @@ func _load() -> void:
 	record_disturbances = bool(cfg.get_value("sim", "record_disturbances", record_disturbances))
 	best_track_enabled = bool(cfg.get_value("sim", "best_track_enabled", best_track_enabled))
 	best_track_dir = str(cfg.get_value("sim", "best_track_dir", best_track_dir))
+	# 白名单校验：手改坏的 settings.cfg 不能直接把任意字符串塞进 writer 字典
+	var fmt := str(cfg.get_value("sim", "best_track_format", best_track_format))
+	if BEST_TRACK_FORMATS.has(fmt):
+		best_track_format = fmt
 	wind_unit_index = clampi(int(cfg.get_value("sim", "wind_unit_index", wind_unit_index)), 0, 2)
 
 

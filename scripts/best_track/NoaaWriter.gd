@@ -1,0 +1,286 @@
+extends "res://scripts/best_track/TrackWriter.gd"
+## NOAA **IBTrACS v04r01** CSV（NCEI）。1.2.0 的默认导出格式。
+##
+## 决议（`docs/1.2.0-构思.md` §5，用户 2026-10-20 已拍板）：
+##   · **174 列全写**，填不上留空（G）；缺测值写**空串**（D）
+##   · **2 行表头**：列名 + 单位（E）；列顺序/单位逐字取自官方 CSV（`IbtracsColumns.gd`）
+##   · 文件 `ibtracs.SIM.<ISO年>.list.v04r01.csv`（F）；声明写同目录 `README-SIM.txt`、只写一次（C）
+##   · 年份 `EXPORT_INITIAL_YEAR` 起步（默认 0001、架空，A）；日期映射到**现实公历**（大月小月+闰年，B）
+##   · **只填共享块 + 移速移向**；机构块默认全空 → 导出文件里**不出现任何国家机构名**（H）。
+##     需要给工具兼容时，配置 `[export] fill_usa_agency=true` 才额外填 USA 块。
+##   · 导出风速上限 `[export] max_wind_kt`（默认 300，只夹导出值，I）
+##
+## ⚠ 不要写 `TRACK_TYPE=main`：官方语义是"再分析过的最终最佳路径"，我们写 `PROVISIONAL`
+##   （准实时、未定稿）。这是"诚实标注"，不是偷懒。
+
+const COLS := preload("res://scripts/best_track/IbtracsColumns.gd")
+
+# ---- 要写的列下标（其余列保持空串）----
+const C_SID := 0
+const C_SEASON := 1
+const C_NUMBER := 2
+const C_BASIN := 3
+const C_SUBBASIN := 4
+const C_NAME := 5
+const C_ISO_TIME := 6
+const C_NATURE := 7
+const C_LAT := 8
+const C_LON := 9
+const C_WMO_WIND := 10
+const C_WMO_PRES := 11
+const C_TRACK_TYPE := 13
+const C_USA_AGENCY := 17
+const C_USA_LAT := 19
+const C_USA_LON := 20
+const C_USA_STATUS := 22
+const C_USA_WIND := 23
+const C_USA_PRES := 24
+const C_USA_SSHS := 25
+const C_STORM_SPEED := 172
+const C_STORM_DIR := 173
+
+const TRACK_TYPE := "PROVISIONAL"
+const BASIN := "WP"
+## WP 海区在 IBTrACS 里没有子海区，官方恒为 `MM`
+const SUBBASIN := "MM"
+const SIDECAR_NAME := "README-SIM.txt"
+
+## 现实公历每月天数（2 月单独按闰年算）
+const DAYS_IN_MONTH: Array[int] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+## 一个采样点代表多少模拟小时（= 每 6 小时一个点，见 BestTrack.sample 的注释）
+const SAMPLE_HOURS := 6.0
+## 1 kt = 1.852 km/h
+const KMH_PER_KT := 1.852
+## 1 度纬度的近似距离（km）。IBTrACS 的移速只需要量级正确
+const KM_PER_DEG := 111.2
+
+# 当前正在写的轨迹（`build_text()` 先调 track_header_lines，再逐点调 sample_line；
+# 这里缓存样本数组 + 游标，算「移速/移向」要用相邻点）
+var _cur_samples: Array = []
+var _cur_index := -1
+
+
+func _init() -> void:
+	id = "noaa"
+	extension = ".csv"
+
+
+# ============================ 表头 ============================
+
+## 2 行表头：列名行 + 单位行（官方 CSV 就是这样，pandas 读时要 skiprows=2）
+func preamble_lines() -> PackedStringArray:
+	return PackedStringArray([
+		",".join(COLS.COLUMNS),
+		",".join(COLS.UNITS),
+	])
+
+
+func track_header_lines(t: Dictionary) -> PackedStringArray:
+	_cur_samples = t["samples"]
+	_cur_index = -1
+	return PackedStringArray()
+
+
+# ============================ 数据行 ============================
+
+func sample_line(s: Dictionary, t: Dictionary, _write_year: int) -> String:
+	_cur_index += 1
+	var row := PackedStringArray()
+	row.resize(COLS.COLUMNS.size())          # 174 个空串，只填用的那几列
+
+	# 采样点自己的年份（跨年台风按生成年归档，但每行的 ISO_TIME 要用采样当年的年份）
+	var iso_year := _iso_year(int(s["year"]))
+	var date := _real_date(iso_year, int(s["month"]), int(s["day"]))
+	var kt := float(s["kt"])
+	var pres := float(s["pres"])
+
+	row[C_SID] = _sid(t)
+	row[C_SEASON] = "%04d" % _iso_year(int(t["birth_year"]))
+	if int(t["storm_number"]) > 0:
+		row[C_NUMBER] = str(int(t["storm_number"]))
+	row[C_BASIN] = BASIN
+	row[C_SUBBASIN] = SUBBASIN
+	var nm := str(t["name_en"])
+	# 官方文件里无名台风就是空串；名字统一大写（官方是 HAIYAN / CHOI-WAN 形式）
+	row[C_NAME] = "" if nm == "(nameless)" else nm.to_upper()
+	row[C_ISO_TIME] = "%04d-%02d-%02d %02d:00:00" % [iso_year, date.x, date.y, int(s["hour"])]
+	row[C_NATURE] = _nature(kt, int(s["phase"]))
+	row[C_LAT] = "%.1f" % float(s["lat"])
+	row[C_LON] = "%.1f" % fposmod(float(s["lon"]), 360.0)
+	# 共享块的 WMO 强度：无国家归属，可以填（WMO_AGENCY 那列留空）
+	row[C_WMO_WIND] = str(int(round(clampf(kt, 0.0, Const.EXPORT_MAX_WIND_KT))))
+	row[C_WMO_PRES] = str(int(round(clampf(pres, 850.0, 1050.0))))
+	row[C_TRACK_TYPE] = TRACK_TYPE
+
+	# USA 机构块：默认**整块留空**（= 导出文件里不出现任何国家机构名）。
+	# 配置里 fill_usa_agency=true 才填，给「只读 USA_* 的工具」用。
+	if Const.EXPORT_FILL_USA_AGENCY:
+		row[C_USA_AGENCY] = "tcvitals"
+		row[C_USA_LAT] = row[C_LAT]
+		row[C_USA_LON] = "%.1f" % _to_180(float(s["lon"]))
+		row[C_USA_STATUS] = _usa_status(kt, int(s["phase"]))
+		row[C_USA_WIND] = row[C_WMO_WIND]
+		row[C_USA_PRES] = row[C_WMO_PRES]
+		row[C_USA_SSHS] = str(_sshs(kt))
+
+	# 移速 / 移向（官方最后两列，我们能算）
+	var sd := _speed_dir(_cur_index)
+	if sd.x >= 0.0:
+		row[C_STORM_SPEED] = str(int(round(sd.x)))
+		row[C_STORM_DIR] = str(int(round(sd.y / 5.0)) * 5 % 360)
+	return ",".join(row)
+
+
+# ============================ 文件名 / 声明 ============================
+
+## 文件名：`ibtracs.SIM.<ISO年>.list.v04r01.csv`（决议 F）。
+## 不用系统日期：同一个风季的文件名可预测、可覆盖检查。
+func file_base(dir: String, _ymd: String, year_index: int) -> String:
+	return dir.path_join("ibtracs.SIM.%04d.list.v04r01" % _iso_year(year_index))
+
+
+## 声明（决议 C）：写在**同目录** `README-SIM.txt`，已存在就跳过。
+## ⚠ 不能塞进 CSV——`#` 开头会破坏纯 CSV 解析。
+func ensure_sidecar(dir: String) -> void:
+	var p := dir.path_join(SIDECAR_NAME)
+	if FileAccess.file_exists(p):
+		return
+	var f := FileAccess.open(p, FileAccess.WRITE)
+	if f == null:
+		push_warning("[BestTrack] 写不了声明文件：%s" % p)
+		return
+	f.store_string(
+		"本目录下的 .csv 文件由「台风模拟器」生成，**不是真实观测资料**，不可用于科研或业务。\n"
+		+ "The CSV files in this directory are generated by a TYPHOON SIMULATOR and are NOT real\n"
+		+ "observational data. Do not use them for research or operations.\n\n"
+		+ "文件格式仿照 NOAA IBTrACS v04r01（174 列，2 行表头：列名 + 单位），但内容全部为模拟结果：\n"
+		+ "  · TRACK_TYPE = PROVISIONAL（准实时/未定稿，不是再分析最佳路径）\n"
+		+ "  · 只填共享块 + STORM_SPEED/STORM_DIR；各机构块（USA/TOKYO/CMA/HKO…）留空\n"
+		+ "  · 年份为架空年份（从配置 [export] initial_year 起算），日期已映射到现实公历\n"
+		+ "  · 缺测值为空\n")
+	f.close()
+
+
+# ============================ 内部：日期 / 数值 ============================
+
+## 游戏内年份计数 → ISO 年份（`[export] initial_year` 起步，默认 0001）
+func _iso_year(game_year: int) -> int:
+	return Const.EXPORT_INITIAL_YEAR + game_year - 1
+
+
+static func _is_leap(year: int) -> bool:
+	return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+static func _days_in_month(year: int, month: int) -> int:
+	if month == 2 and _is_leap(year):
+		return 29
+	return DAYS_IN_MONTH[clampi(month - 1, 0, 11)]
+
+
+## 游戏内 12×30 日历 → 现实公历（决议 B）：
+## 月份不变；日 = clamp(round(day × 当月天数 / 30), 1, 当月天数)。
+## 这样永远不会写出 2 月 30 日这种非法日期，月份的含义也不会变。
+static func _real_date(iso_year: int, month: int, day: int) -> Vector2i:
+	var m := clampi(month, 1, 12)
+	var dim := _days_in_month(iso_year, m)
+	var d := clampi(int(round(float(day) * float(dim) / 30.0)), 1, dim)
+	return Vector2i(m, d)
+
+
+## 经度 → −180…180（官方机构块用这套；共享块的 LON 是 0–360）
+static func _to_180(lon: float) -> float:
+	return fposmod(lon + 180.0, 360.0) - 180.0
+
+
+## NATURE：弱于 34 kt 的扰动 → DS；变性完成 → ET；其余（含变性中）→ TS
+static func _nature(kt: float, phase: int) -> String:
+	if phase == 2:                          # Storm.Phase.EXTRATROPICAL
+		return "ET"
+	if kt < 34.0:
+		return "DS"
+	return "TS"
+
+
+## USA_STATUS（只在 fill_usa_agency 时用）：JTWC 口径
+static func _usa_status(kt: float, phase: int) -> String:
+	if phase == 2:
+		return "EX"
+	if kt < 34.0:
+		return "TD"
+	if kt < 64.0:
+		return "TS"
+	if kt >= 130.0:                         # JTWC 的「超强台风」门槛
+		return "ST"
+	return "TY"
+
+
+## USA_SSHS：**IBTrACS 自己的阈值**（64/83/96/113/137），不是游戏内那套（63/82/95/112/136）
+static func _sshs(kt: float) -> int:
+	if kt < 34.0:
+		return -1
+	if kt < 64.0:
+		return 0
+	if kt < 83.0:
+		return 1
+	if kt < 96.0:
+		return 2
+	if kt < 113.0:
+		return 3
+	if kt < 137.0:
+		return 4
+	return 5
+
+
+## 移速（kt）/ 移向（度，正北顺时针）：用相邻两个采样点算，端点用单侧差分。
+## 返回 Vector2(speed_kt, dir_deg)；只有一个采样点时返回 (-1, -1) 表示留空。
+func _speed_dir(i: int) -> Vector2:
+	var n := _cur_samples.size()
+	if n < 2 or i < 0 or i >= n:
+		return Vector2(-1.0, -1.0)
+	var a := i - 1 if i > 0 else i
+	var b := i + 1 if i < n - 1 else i
+	if a == b:
+		return Vector2(-1.0, -1.0)
+	var sa: Dictionary = _cur_samples[a]
+	var sb: Dictionary = _cur_samples[b]
+	var dt_h := float(b - a) * SAMPLE_HOURS
+	var lat1 := float(sa["lat"])
+	var lon1 := float(sa["lon"])
+	var lat2 := float(sb["lat"])
+	var lon2 := float(sb["lon"])
+	var dlat := lat2 - lat1
+	var dlon := lon2 - lon1
+	# 跨 180° 经线时取最短方向
+	if dlon > 180.0:
+		dlon -= 360.0
+	elif dlon < -180.0:
+		dlon += 360.0
+	var lat_mid := deg_to_rad((lat1 + lat2) * 0.5)
+	var dx := dlon * cos(lat_mid)
+	var dkm := sqrt((dlat * KM_PER_DEG) * (dlat * KM_PER_DEG)
+		+ (dx * KM_PER_DEG) * (dx * KM_PER_DEG))
+	var speed_kt := dkm / dt_h / KMH_PER_KT
+	var dir := fposmod(rad_to_deg(atan2(dx, dlat)), 360.0)
+	return Vector2(speed_kt, dir)
+
+
+## SID：`<ISO年><年内第几天><N/S><两位起始纬度><三位起始经度>`，
+## 例：2013 年第 306 天、7°N、162°E → `2013306N07162`。
+## ⚠ 官方没有公开生成规则（见 02 报告 §5），这是从样本反推的格式；
+##   年内天数是按**映射后的现实公历**算的（和 ISO_TIME 自洽）。
+func _sid(t: Dictionary) -> String:
+	var iso_year := _iso_year(int(t["birth_year"]))
+	var date := _real_date(iso_year, int(t["birth_month"]), int(t["birth_day"]))
+	var doy := date.y
+	for m in range(1, date.x):
+		doy += _days_in_month(iso_year, m)
+	var lat := 0.0
+	var lon := 0.0
+	var samples: Array = t["samples"]
+	if not samples.is_empty():
+		lat = float(samples[0]["lat"])
+		lon = float(samples[0]["lon"])
+	var hemi := "N" if lat >= 0.0 else "S"
+	var lon360 := int(round(fposmod(lon, 360.0))) % 360
+	return "%04d%03d%s%02d%03d" % [iso_year, doy, hemi, int(round(absf(lat))), lon360]

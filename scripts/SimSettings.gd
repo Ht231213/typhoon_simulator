@@ -40,21 +40,24 @@ const ROW_FONT_SIZE := 19
 
 @onready var mode_option: OptionButton = %ModeOption
 @onready var season_check: CheckBox = %SeasonCheck
-@onready var unit_option: OptionButton = %UnitOption
 @onready var mean_sst_spin: SpinBox = %MeanSstSpin
 @onready var seasonal_amp_spin: SpinBox = %SeasonalAmpSpin
 @onready var record_disturbances_check: CheckBox = %RecordDisturbancesCheck
 @onready var best_track_check: CheckBox = %BestTrackCheck
-@onready var best_track_dir_edit: LineEdit = %BestTrackDirEdit
-@onready var best_track_browse_button: Button = %BestTrackBrowseButton
-@onready var dir_dialog: FileDialog = %DirDialog
+@onready var best_track_format_option: OptionButton = %BestTrackFormatOption
 
 # 跟着权限一起压暗的标签（锁住的项如果只有控件变灰、标签还亮着，看起来像坏了）
 @onready var mode_label: Label = %ModeLabel
-@onready var unit_label: Label = %UnitLabel
 @onready var mean_sst_label: Label = %MeanSstLabel
 @onready var seasonal_amp_label: Label = %SeasonalAmpLabel
-@onready var best_track_dir_label: Label = %BestTrackDirLabel
+@onready var best_track_format_label: Label = %BestTrackFormatLabel
+
+## 「导出方式」下拉的显示文字。值（id）由 `GameSettings.BEST_TRACK_FORMATS` 决定，
+## 这里只放显示名，两边顺序必须一致（`_setup_best_track_format_options` 按格式值遍历）。
+const FORMAT_LABELS := {
+	"noaa": "NOAA（IBTrACS）",
+	"cma": "CMA（中国气象局）",
+}
 
 ## 当前权限上下文（进游戏前 / 进游戏后·非风季 / 进游戏后·风季）
 var _in_game := false
@@ -97,7 +100,7 @@ func _ready() -> void:
 			if box is PanelContainer:
 				(box as PanelContainer).add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_setup_mode_options()
-	_setup_unit_options()
+	_setup_best_track_format_options()
 	_apply_spin_fonts()
 	_connect_signals()
 	_ready_done = true
@@ -147,8 +150,6 @@ func set_context(p_in_game: bool, p_season: bool) -> void:
 	_set_editable(season_check, not game_locked)
 
 	# ② 单位：任何上下文都能改。它只影响显示（侧栏/战报读哪个单位），不碰物理。
-	_set_editable(unit_option, true)
-	_dim_label(unit_label, false)
 
 	# ③ 风季模式里除了单位以外全部锁死；非风季的进游戏后则都还能改。
 	var others_editable := not (p_in_game and p_season)
@@ -183,7 +184,6 @@ func refresh_from_store() -> void:
 	season_check.set_pressed_no_signal(Game.season_mode)
 
 	var unit_count := TyphoonSim.WIND_UNITS.size()
-	unit_option.select(clampi(int(GameSettings.wind_unit_index), 0, unit_count - 1))
 
 	mean_sst_spin.set_value_no_signal(GameSettings.mean_sst)
 	seasonal_amp_spin.set_value_no_signal(GameSettings.seasonal_amplitude)
@@ -191,10 +191,10 @@ func refresh_from_store() -> void:
 	record_disturbances_check.set_pressed_no_signal(GameSettings.record_disturbances)
 	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
 
-	# 存储里是空字符串 = 还没选过，直接显示默认目录（<游戏根>/BestTrack），
-	# 但**不**把默认值写进存储，免得用户没动过它也留下一条记录。
-	var dir: String = GameSettings.best_track_dir
-	best_track_dir_edit.text = dir if dir != "" else default_best_track_dir()
+	# 导出方式：按值反查下标（不要假设存储里的格式一定在数组里——_load 有白名单，这里再兜一次）
+	var fmt_idx := GameSettings.BEST_TRACK_FORMATS.find(GameSettings.best_track_format)
+	best_track_format_option.select(maxi(fmt_idx, 0))
+
 	_update_dir_row()
 
 
@@ -240,10 +240,15 @@ func _setup_mode_options() -> void:
 
 ## 风速单位。选项直接从 TyphoonSim.WIND_UNITS 拿，别在这里另抄一份字符串，
 ## 否则以后加了单位两边会悄悄错位。
-func _setup_unit_options() -> void:
-	unit_option.clear()
-	for unit in TyphoonSim.WIND_UNITS:
-		unit_option.add_item(unit)
+
+## 导出方式下拉。顺序/允许值以 `GameSettings.BEST_TRACK_FORMATS` 为唯一真源，
+## item 的 id 就是数组下标（选中后按 `BEST_TRACK_FORMATS[index]` 换回字符串）。
+func _setup_best_track_format_options() -> void:
+	best_track_format_option.clear()
+	var idx := 0
+	for fmt in GameSettings.BEST_TRACK_FORMATS:
+		best_track_format_option.add_item(FORMAT_LABELS.get(fmt, fmt), idx)
+		idx += 1
 
 
 ## SpinBox 的字号要单独补，见 ROW_FONT_SIZE 的注释。
@@ -257,15 +262,11 @@ func _connect_signals() -> void:
 	header.pressed.connect(_on_header_pressed)
 	mode_option.item_selected.connect(_on_mode_selected)
 	season_check.toggled.connect(_on_season_toggled)
-	unit_option.item_selected.connect(_on_unit_selected)
 	mean_sst_spin.value_changed.connect(_on_mean_sst_changed)
 	seasonal_amp_spin.value_changed.connect(_on_seasonal_amp_changed)
 	record_disturbances_check.toggled.connect(_on_record_disturbances_toggled)
 	best_track_check.toggled.connect(_on_best_track_toggled)
-	best_track_dir_edit.text_submitted.connect(_on_dir_submitted)
-	best_track_dir_edit.focus_exited.connect(_commit_best_track_dir)
-	best_track_browse_button.pressed.connect(_on_browse_pressed)
-	dir_dialog.dir_selected.connect(_on_dir_selected)
+	best_track_format_option.item_selected.connect(_on_best_track_format_selected)
 
 
 # ============================ 用户改动 ============================
@@ -284,10 +285,6 @@ func _on_season_toggled(pressed: bool) -> void:
 	Game.season_mode = pressed
 	settings_changed.emit()
 
-
-func _on_unit_selected(index: int) -> void:
-	GameSettings.wind_unit_index = index
-	_persist()
 
 
 func _on_mean_sst_changed(value: float) -> void:
@@ -315,36 +312,16 @@ func _on_best_track_toggled(pressed: bool) -> void:
 	_persist()
 
 
-## 导出路径：用「回车 / 失去焦点」提交，而不是每敲一个字就写一次存储
-## （Web 上每次写盘都是 IndexedDB 操作，见 PROGRESS 的 W1）。
-func _on_dir_submitted(_text: String) -> void:
-	_commit_best_track_dir()
-
-
-func _commit_best_track_dir() -> void:
-	var dir := best_track_dir_edit.text.strip_edges()
-	if dir == "":
-		# 清空 = 用回默认目录（存空字符串没意义，读的人还得再猜一次默认值）
-		dir = default_best_track_dir()
-		best_track_dir_edit.text = dir
-		best_track_dir_edit.caret_column = dir.length()
-	if dir == GameSettings.best_track_dir:
+## 导出方式：切格式**不清空已有轨迹**（采样与格式无关，一年只在年底写一次文件，
+## 所以整份文件必然用切换后的格式；跨年延后写的那种边角也用新格式，可接受）。
+func _on_best_track_format_selected(index: int) -> void:
+	var formats := GameSettings.BEST_TRACK_FORMATS
+	if index < 0 or index >= formats.size():
 		return
-	GameSettings.best_track_dir = dir
+	if GameSettings.best_track_format == formats[index]:
+		return
+	GameSettings.best_track_format = formats[index]
 	_persist()
-
-
-func _on_browse_pressed() -> void:
-	var start := best_track_dir_edit.text.strip_edges()
-	if start == "":
-		start = default_best_track_dir()
-	dir_dialog.current_dir = start
-	dir_dialog.popup_centered_ratio(0.62)
-
-
-func _on_dir_selected(dir: String) -> void:
-	best_track_dir_edit.text = dir
-	_commit_best_track_dir()
 
 
 # ============================ 小工具 ============================
@@ -356,13 +333,13 @@ func _persist() -> void:
 	settings_changed.emit()
 
 
-## 导出路径只有在「勾了最佳路径」且「当前上下文允许改最佳路径」时才可用。
+## 导出路径 / 导出方式只有在「勾了最佳路径」且「当前上下文允许改最佳路径」时才可用。
 func _update_dir_row() -> void:
 	var can_edit := not (_in_game and _season)
 	var on := can_edit and best_track_check.button_pressed
-	_set_editable(best_track_dir_edit, on)
-	_set_editable(best_track_browse_button, on)
-	_dim_label(best_track_dir_label, not on)
+	# 导出方式跟导出路径同一套规则（风季里禁用 → 和勾选框一起锁）
+	_set_editable(best_track_format_option, on)
+	_dim_label(best_track_format_label, not on)
 
 
 ## 把控件设成可用 / 不可用。按基类分派，别逐类写死属性名。

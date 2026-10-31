@@ -15,6 +15,8 @@ extends Control
 var app_settings: Control = null
 @onready var board_popup: AcceptDialog = %BoardPopup
 @onready var board_text: RichTextLabel = %BoardText
+## 左下角版本号。文字在 `_ready()` 里从 ProjectSettings 取，不硬编码（改版本号自动跟随）
+@onready var version_label: Label = %VersionLabel
 
 ## 主菜单背景音乐。
 ## 用「导出路径」而不是写死 `$TitleBgm`——这样你在编辑器里改名/挪动这个节点时
@@ -37,6 +39,10 @@ func _ready() -> void:
 	board_button.pressed.connect(_on_board_pressed)
 	settings_button.pressed.connect(_on_app_settings_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
+
+	# 版本号从 project.godot 的 `config/version` 取 —— 以后改版本号这里自动跟随，不会忘记改。
+	var version := str(ProjectSettings.get_setting("application/config/version", ""))
+	version_label.text = "v" + version if version != "" else ""
 
 	# ⚠ BUG-1（2026-10-24）：设置界面**不能**用场景里的静态实例。
 	#   导出的场景里，「Control 做场景根的静态实例」会丢掉满屏锚点（锚点全 0、尺寸 0x0），
