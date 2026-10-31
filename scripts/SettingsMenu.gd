@@ -27,7 +27,9 @@ extends Control
 @onready var hint_label: Label = %HintLabel
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
-var preset_scheme_option: OptionButton = null
+var icon_scheme_option: OptionButton = null
+var effect_scheme_option: OptionButton = null
+var sfx_scheme_option: OptionButton = null
 var bright_ext_check: CheckBox = null
 var unit_option: OptionButton = null
 
@@ -97,38 +99,47 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 	return opt
 
 
-## 预设页（A4）：方案 + 亮蓝扩展 + 单位
+## 预设页：图标方案 / 特效方案 / 音效方案（各自独立）+ 白色阶段 + 单位
+## ⚠ 用户 2026-10-31：下拉里**只写方案名**；版面上**不要任何介绍性文字**（tooltip 可以留）。
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	preset_scheme_option = _add_option_row(page, "方案",
-		"图标 / 登陆特效 / 登陆音效一起换（A3）。\nDefault = 简单圆圈；SMCY1.3 = 图标库素材。")
-	var idx := 0
-	for name in GameSettings.PRESET_SCHEMES:
-		preset_scheme_option.add_item(GameSettings.PRESET_LABELS.get(name, name), idx)
-		idx += 1
-	preset_scheme_option.item_selected.connect(_on_preset_scheme_selected)
+	icon_scheme_option = _add_option_row(page, "图标方案", "台风图标的素材方案")
+	_fill_scheme_option(icon_scheme_option)
+	icon_scheme_option.item_selected.connect(_on_icon_scheme_selected)
+
+	effect_scheme_option = _add_option_row(page, "特效方案", "登陆特效的素材方案")
+	_fill_scheme_option(effect_scheme_option)
+	effect_scheme_option.item_selected.connect(_on_effect_scheme_selected)
+
+	sfx_scheme_option = _add_option_row(page, "音效方案", "登陆音效的素材方案")
+	_fill_scheme_option(sfx_scheme_option)
+	sfx_scheme_option.item_selected.connect(_on_sfx_scheme_selected)
 
 	bright_ext_check = CheckBox.new()
-	bright_ext_check.text = "170kt+ 亮蓝扩展"
+	bright_ext_check.text = "白色阶段"
 	bright_ext_check.custom_minimum_size = Vector2(0, 44)
 	bright_ext_check.add_theme_font_size_override("font_size", 19)
-	bright_ext_check.tooltip_text = "开启后 ≥170 kt 的图标会提亮/变白（参考工程的 BRIGHTNESS 扩展）。\n默认关闭：变白后图标上的数字/闪电会看不清。"
+	bright_ext_check.tooltip_text = "打开后 ≥260 kt 的图标会变成白色（会盖住数字/闪电）"
 	bright_ext_check.toggled.connect(_on_bright_ext_toggled)
 	page.add_child(bright_ext_check)
 
-	unit_option = _add_option_row(page, "单位", "风速显示单位（只影响显示，不影响物理计算）")
+	unit_option = _add_option_row(page, "单位", "风速显示单位")
 	for unit in TyphoonSim.WIND_UNITS:
 		unit_option.add_item(unit)
 	unit_option.item_selected.connect(_on_unit_selected)
 
-	var hint := Label.new()
-	hint.text = "方案只影响外观和登陆音效，不影响模拟结果。"
-	hint.add_theme_font_size_override("font_size", 14)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	page.add_child(hint)
 	# 预设页放第一个（TabContainer 里第 0 个）
 	pages.move_child(pages.get_child(pages.get_child_count() - 1), 0)
+
+
+## 填充方案下拉：item id = PRESET_SCHEMES 下标，文字只显示方案名
+func _fill_scheme_option(option: OptionButton) -> void:
+	option.clear()
+	var idx := 0
+	for name in GameSettings.PRESET_SCHEMES:
+		option.add_item(str(GameSettings.PRESET_LABELS.get(name, name)), idx)
+		idx += 1
 
 
 ## 模拟设置页（1.1.0）：只放可调参数，不含模式选项
@@ -163,11 +174,12 @@ func open() -> void:
 	sfx_slider.set_value_no_signal(GameSettings.sfx_volume * 100.0)
 	_refresh_volume_labels()
 
-	# 预设页
-	var scheme_idx := GameSettings.PRESET_SCHEMES.find(GameSettings.preset_scheme)
-	preset_scheme_option.select(maxi(scheme_idx, 0))
+	# 预设页（三个方案各自独立）
+	icon_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.icon_scheme), 0))
+	effect_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.effect_scheme), 0))
+	sfx_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.sfx_preset), 0))
 	bright_ext_check.set_pressed_no_signal(GameSettings.icon_bright_ext)
-	bright_ext_check.visible = GameSettings.preset_scheme == "smcy13"
+	bright_ext_check.visible = GameSettings.icon_scheme == "smcy13"
 	unit_option.select(clampi(int(GameSettings.wind_unit_index), 0, TyphoonSim.WIND_UNITS.size() - 1))
 
 	# 回到第一个选项卡。用 tab_count 判断，避免标签还没同步时报越界
@@ -207,13 +219,27 @@ func _on_sfx_changed(value: float) -> void:
 	_refresh_volume_labels()
 
 
-## 方案：图标 / 特效 / 音效一起换（GameSettings.set_preset_scheme）
-func _on_preset_scheme_selected(index: int) -> void:
+## 图标方案（独立）
+func _on_icon_scheme_selected(index: int) -> void:
 	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
 		return
-	GameSettings.set_preset_scheme(GameSettings.PRESET_SCHEMES[index])
-	# 亮蓝扩展只在 SMCY1.3 下可用（B4）
-	bright_ext_check.visible = GameSettings.preset_scheme == "smcy13"
+	GameSettings.set_icon_scheme(GameSettings.PRESET_SCHEMES[index])
+	# 「白色阶段」只在 SMCY1.3 下显示
+	bright_ext_check.visible = GameSettings.icon_scheme == "smcy13"
+
+
+## 特效方案（独立）
+func _on_effect_scheme_selected(index: int) -> void:
+	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
+		return
+	GameSettings.set_effect_scheme(GameSettings.PRESET_SCHEMES[index])
+
+
+## 音效方案（独立）
+func _on_sfx_scheme_selected(index: int) -> void:
+	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
+		return
+	GameSettings.set_sfx_scheme(GameSettings.PRESET_SCHEMES[index])
 
 
 ## 「170 kt+ 亮蓝扩展」（B4）：立即生效 + 落盘

@@ -108,7 +108,7 @@ func _ready() -> void:
 ## 设置里换了方案 / 勾了「170kt+ 亮蓝扩展」→ 立刻刷新。
 ## `GameSettings.changed` 也会因音量/海温等触发，这里判一下「真的变了」再动。
 func _on_settings_changed() -> void:
-	var scheme := GameSettings.preset_scheme
+	var scheme := GameSettings.icon_scheme
 	if scheme == "":
 		scheme = IconSchemeLoader.DEFAULT_SCHEME
 	var changed := scheme != icon_scheme or _bright_ext_cache != GameSettings.icon_bright_ext
@@ -425,7 +425,8 @@ func _apply_icon_tint() -> void:
 	if simple:
 		base = ramp_color(live_intensity)
 	else:
-		hue = IconTint.hue_shift_for(live_intensity)
+		# ⚠ IconTint 返回的是**度**（±180 量级），shader 的 hue_shift 要的是**圈数**
+		hue = IconTint.hue_shift_for(live_intensity) / 360.0
 		blue = IconTint.blue_mix_for(live_intensity)
 		bright = blue * 0.45
 		if GameSettings.icon_bright_ext:

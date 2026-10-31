@@ -20,11 +20,13 @@ const BUS_SFX := "SFX"
 ##   · 图标   `assets/icons/<方案>/`
 ##   · 登陆特效 `assets/effects/<方案>/`
 ##   · 登陆音效 `assets/sfx/<方案>/landfall/*.wav`
-## ⚠ Default 是旧版「简单圆圈」，SMCY1.3 是图标库那套 —— **互斥，不能混用**。
+## ⚠ 2026-10-31 用户要求：**三个方案拆成独立设置**，各自独立保存、独立生效
+##   （以前一个「方案」下拉同时换三样）。
 const PRESET_SCHEMES: Array[String] = ["default", "smcy13"]
+## 下拉里**只显示方案名**（用户 2026-10-31：不要括号说明）
 const PRESET_LABELS := {
-	"default": "Default（简单圆圈）",
-	"smcy13": "SMCY1.3（图标库）",
+	"default": "默认",
+	"smcy13": "SMCY1.3",
 }
 const DEFAULT_PRESET_SCHEME := "default"
 
@@ -35,7 +37,7 @@ var music_volume := 0.8
 var sfx_volume := 1.0
 ## 是否全屏
 var fullscreen := false
-## 音效预设名（跟随方案，见 PRESET_SCHEMES）
+## 音效方案名（独立设置，见 PRESET_SCHEMES）
 var sfx_preset := DEFAULT_PRESET_SCHEME
 
 # ------------------------- 模拟设置（1.1.0 新增）-------------------------
@@ -71,22 +73,33 @@ var wind_unit_index := 0
 var icon_scheme := "default"
 ## 登陆特效方案
 var effect_scheme := "default"
-## 「170 kt+ 亮蓝扩展」（B4）：勾上才把 ≥170 kt 的图标提亮/变白；
-## 默认关（变白后 SMCY 图标上的数字/闪电看不清）。只在方案 = smcy13 时显示这个勾选框。
+## 「170 kt+ 白色阶段」勾选：默认关（变白后 SMCY 图标上的数字/闪电看不清）。
+## 只在图标方案 = smcy13 时显示这个勾选框。
 var icon_bright_ext := false
-## 当前方案名（图标/特效/音效统一由它决定，见 PRESET_SCHEMES）
-var preset_scheme := DEFAULT_PRESET_SCHEME
 
 
-## 切换方案：图标/特效/音效一起换（A3 要求"跟随同一个方案选择"）
-func set_preset_scheme(name: String) -> void:
-	if not PRESET_SCHEMES.has(name):
-		name = DEFAULT_PRESET_SCHEME
-	if name == preset_scheme:
+## 切换图标方案（独立设置）
+func set_icon_scheme(name: String) -> void:
+	if not PRESET_SCHEMES.has(name) or name == icon_scheme:
 		return
-	preset_scheme = name
 	icon_scheme = name
+	_save()
+	changed.emit()
+
+
+## 切换登陆特效方案（独立设置）
+func set_effect_scheme(name: String) -> void:
+	if not PRESET_SCHEMES.has(name) or name == effect_scheme:
+		return
 	effect_scheme = name
+	_save()
+	changed.emit()
+
+
+## 切换音效方案（独立设置）
+func set_sfx_scheme(name: String) -> void:
+	if not PRESET_SCHEMES.has(name) or name == sfx_preset:
+		return
 	sfx_preset = name
 	_save()
 	changed.emit()
@@ -244,7 +257,6 @@ func _save() -> void:
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
 	cfg.set_value("audio", "sfx_preset", sfx_preset)
 	cfg.set_value("video", "fullscreen", fullscreen)
-	cfg.set_value("video", "preset_scheme", preset_scheme)
 	cfg.set_value("video", "icon_bright_ext", icon_bright_ext)
 	cfg.set_value("video", "icon_scheme", icon_scheme)
 	cfg.set_value("video", "effect_scheme", effect_scheme)
@@ -268,18 +280,21 @@ func _load() -> void:
 	music_volume = clampf(float(cfg.get_value("audio", "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx_volume", sfx_volume)), 0.0, 1.0)
 	fullscreen = bool(cfg.get_value("video", "fullscreen", fullscreen))
-	# 方案（图标+特效+音效一起）。旧的 `sfx_preset="zmrtysimu"` 视同 Default（旧版那套素材）。
-	var scheme := str(cfg.get_value("video", "preset_scheme", ""))
-	if scheme == "":
-		scheme = str(cfg.get_value("audio", "sfx_preset", DEFAULT_PRESET_SCHEME))
-	if scheme == "zmrtysimu":
-		scheme = "default"
-	if not PRESET_SCHEMES.has(scheme):
-		scheme = DEFAULT_PRESET_SCHEME
-	preset_scheme = scheme
-	icon_scheme = scheme
-	effect_scheme = scheme
-	sfx_preset = scheme
+	# 三个方案各自独立（2026-10-31 用户要求）。
+	# 老配置迁移：以前只有一个 `preset_scheme`（或音效的 `sfx_preset="zmrtysimu"`）→ 三样都取它。
+	var old_scheme := str(cfg.get_value("video", "preset_scheme", ""))
+	if old_scheme == "":
+		old_scheme = str(cfg.get_value("audio", "sfx_preset", DEFAULT_PRESET_SCHEME))
+	if old_scheme == "zmrtysimu":
+		old_scheme = "default"
+	if not PRESET_SCHEMES.has(old_scheme):
+		old_scheme = DEFAULT_PRESET_SCHEME
+	var icon_s := str(cfg.get_value("video", "icon_scheme", old_scheme))
+	var effect_s := str(cfg.get_value("video", "effect_scheme", old_scheme))
+	var sfx_s := str(cfg.get_value("audio", "sfx_preset", old_scheme))
+	icon_scheme = icon_s if PRESET_SCHEMES.has(icon_s) else DEFAULT_PRESET_SCHEME
+	effect_scheme = effect_s if PRESET_SCHEMES.has(effect_s) else DEFAULT_PRESET_SCHEME
+	sfx_preset = sfx_s if PRESET_SCHEMES.has(sfx_s) else DEFAULT_PRESET_SCHEME
 	icon_bright_ext = bool(cfg.get_value("video", "icon_bright_ext", icon_bright_ext))
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)

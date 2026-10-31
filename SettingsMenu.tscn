@@ -73,13 +73,6 @@ theme_override_font_sizes/font_size = 22
 tooltip_text = "切换全屏 / 窗口模式"
 text = "全屏显示"
 
-[node name="VideoHint" type="Label" parent="Margin/Box/Rows/Pages/视频"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "窗口可自由拖动缩放，画面按比例缩放并居中，多出来的地方留空。"
-autowrap_mode = 2
-
 [node name="音频" type="VBoxContainer" parent="Margin/Box/Rows/Pages"]
 layout_mode = 2
 theme_override_constants/separation = 18
@@ -89,6 +82,7 @@ custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
 [node name="MusicRow" type="HBoxContainer" parent="Margin/Box/Rows/Pages/音频"]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 14
 
@@ -145,13 +139,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 19
 text = "100%"
 horizontal_alignment = 2
-
-[node name="AudioHint" type="Label" parent="Margin/Box/Rows/Pages/音频"]
-visible = false
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = ""
-autowrap_mode = 2
 
 [node name="Sep1" type="HSeparator" parent="Margin/Box/Rows"]
 layout_mode = 2
