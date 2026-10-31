@@ -15,6 +15,10 @@ extends Node2D
 
 const IconSchemeLoader := preload("res://scripts/IconScheme.gd")
 
+## 图标世界直径的**兜底值**（方案的 scheme.cfg 没写 `world_diameter` 时用这个）。
+## ⚠ 用户会**手动改这个数**，不要改成用地图格子尺寸推导出来的表达式。
+const ICON_DIAMETER_FALLBACK := 54.0
+
 # ------------------------- 已走过的路径 -------------------------
 var points: Array[Vector2] = []
 var intensities: Array[float] = []
@@ -50,6 +54,16 @@ var _icon_inner: Sprite2D = null
 var _icon_video: VideoStreamPlayer = null
 ## 当前视频路径（换档才重新 load+play）
 var _icon_video_path := ""
+## 叠化用的「旧视频」播放器（换档时把旧视频留在它上面继续播，0.25 s 交叉淡出）
+var _icon_video_prev: VideoStreamPlayer = null
+## 叠化进度：1 = 全是旧视频，0 = 全是新视频
+var _video_fade := 0.0
+## 换档叠化时长（秒）
+const VIDEO_FADE_SECONDS := 0.25
+## 图标动画的周期（秒）：素材 300 帧 = 5.0 s，换档时按这个周期对齐相位
+const VIDEO_PHASE_SECONDS := 5.0
+## 当前视频的底色（不含 alpha），叠化时用它算两个播放器的 alpha
+var _video_tint := Color.WHITE
 ## 色相/亮度调制的共享材质（参考工程 Scratch 的 COLOR/BRIGHTNESS 的 Godot 版）
 var _icon_tint_material: ShaderMaterial = null
 ## 当前贴图对应的档位名（换档才重新读贴图）
@@ -104,6 +118,18 @@ func _ready() -> void:
 	_icon_video.visible = false
 	add_child(_icon_video)
 
+	# 叠化用的第二个播放器（换档时新旧两帧交叉淡入淡出，避免"跳一下"）
+	_icon_video_prev = VideoStreamPlayer.new()
+	_icon_video_prev.name = "StormIconVideoPrev"
+	_icon_video_prev.z_index = 1
+	_icon_video_prev.loop = true
+	_icon_video_prev.expand = true
+	var vmat_prev := ShaderMaterial.new()
+	vmat_prev.shader = preload("res://assets/icons/video_key.gdshader")
+	_icon_video_prev.material = vmat_prev
+	_icon_video_prev.visible = false
+	add_child(_icon_video_prev)
+
 
 ## 设置里换了方案 / 勾了「170kt+ 亮蓝扩展」→ 立刻刷新。
 ## `GameSettings.changed` 也会因音量/海温等触发，这里判一下「真的变了」再动。
@@ -118,8 +144,33 @@ func _on_settings_changed() -> void:
 		return
 	_icon_meta_ready = false      # 世界直径/转速也可能跟着方案变
 	_icon_tier = ""
+	# ⚠ 用户 2026-10-31 报的 bug：切方案后另一套还画在屏幕上（Default 圆环叠在视频图标上）
+	#   → 切换时**强制**把不属于当前方案的那套彻底关掉（visible + stop），不能只改 texture
+	_sync_icon_sets()
 	if live_visible:
 		_update_icon()
+
+
+## 切方案后强制「只显示当前方案那一套」，另一套必须 visible=false（视频还要 stop）
+func _sync_icon_sets() -> void:
+	var use_video := _scheme_uses_video()
+	if use_video:
+		if _icon_outer != null:
+			_icon_outer.visible = false
+		if _icon_inner != null:
+			_icon_inner.visible = false
+		if _icon_video_prev != null:
+			_icon_video_prev.stop()
+			_icon_video_prev.visible = false
+		_video_fade = 0.0
+	else:
+		if _icon_video != null:
+			_icon_video.stop()
+			_icon_video.visible = false
+		if _icon_video_prev != null:
+			_icon_video_prev.stop()
+			_icon_video_prev.visible = false
+		_video_fade = 0.0
 
 
 func clear_track() -> void:
@@ -183,15 +234,15 @@ func _process(delta: float) -> void:
 	# 外圈持续旋转：素材实测 300 帧 = 5.0 秒一圈（72°/s），内圈完全不动
 	if _icon_outer != null and _icon_outer.visible:
 		_icon_outer.rotation += deg_to_rad(icon_spin_deg) * delta * icon_spin_dir
+	# 换档叠化（新旧两个视频 alpha 交叉，0.25 s）
+	_advance_video_fade(delta)
 	# 消散淡出（用 shader 的 fade 参数，代替参考工程的「消散」造型）
 	if _icon_fading and (_icon_outer != null or _icon_video != null):
 		_icon_fade = maxf(0.0, _icon_fade - delta / ICON_FADE_SECONDS)
 		if _icon_tint_material != null:
 			_icon_tint_material.set_shader_parameter("fade", _icon_fade)
 		if _icon_video != null and _icon_video.visible:
-			var c := _icon_video.modulate
-			c.a = _icon_fade
-			_icon_video.modulate = c
+			_apply_video_alpha()
 		if _icon_fade <= 0.0:
 			_hide_icon()
 	# 登陆特效占位：到期就收掉
@@ -214,9 +265,9 @@ func _update_icon() -> void:
 		return
 	if not _icon_meta_ready:
 		_icon_meta_ready = true
-		# A7：图标世界直径默认 = 0.8 × 地图格子短边（CELL_W = 67.5 → 54 px）
+		# 图标世界直径：方案 cfg 优先，没写就用常量兜底（用户会手动改 ICON_DIAMETER_FALLBACK）
 		icon_diameter = IconSchemeLoader.meta_float(
-			IconSchemeLoader.KIND_ICONS, icon_scheme, "world_diameter", Const.CELL_W * 0.8)
+			IconSchemeLoader.KIND_ICONS, icon_scheme, "world_diameter", ICON_DIAMETER_FALLBACK)
 		icon_spin_deg = IconSchemeLoader.meta_float(
 			IconSchemeLoader.KIND_ICONS, icon_scheme, "rotation_deg_per_sec", 72.0)
 		# 南北半球只差旋向：北半球**逆时针**、南半球顺时针。
@@ -314,19 +365,59 @@ func _update_icon_video(form: int) -> void:
 		_icon_video.visible = false
 		return
 	if path != _icon_video_path:
+		# ① 相位对齐：换档时新视频从旧视频的**同一动画相位**开始播
+		#    （所有图标视频周期 = 5.0 s；不对齐的话新视频从第 0 帧开始 → 旋涡角度跳一下）
+		var phase := 0.0
+		if _icon_video.stream != null and _icon_video.is_playing():
+			phase = fmod(maxf(_icon_video.stream_position, 0.0), VIDEO_PHASE_SECONDS)
+		# ② 叠化：旧视频留在 prev 播放器上继续播，0.25 s 内交叉淡出
+		if _icon_video.stream != null and _icon_video.visible:
+			_icon_video_prev.stream = _icon_video.stream
+			_icon_video_prev.size = _icon_video.size
+			_icon_video_prev.position = _icon_video.position
+			_icon_video_prev.visible = true
+			_icon_video_prev.play()
+			_icon_video_prev.stream_position = phase
+			_video_fade = 1.0
 		_icon_video_path = path
 		_icon_video.stream = load(path) as VideoStream
 		_icon_video.play()
+		_icon_video.stream_position = phase
 	var d := icon_diameter_for(icon_diameter, live_intensity)
 	_icon_video.size = Vector2(d, d)
 	_icon_video.position = live_position - Vector2(d, d) * 0.5
 	_icon_video.visible = true
+	if _icon_video_prev.visible:
+		_icon_video_prev.size = Vector2(d, d)
+		_icon_video_prev.position = live_position - Vector2(d, d) * 0.5
 	if not _icon_video.is_playing():
 		_icon_video.play()
-	var tint := video_tint_for(live_intensity)
-	tint.a = _icon_fade
-	_icon_video.modulate = tint
-	_reset_icon_fade()
+	# ③ 颜色（含淡出 alpha）由 _apply_video_alpha() 统一算，叠化期间新旧各占一半
+	_video_tint = video_tint_for(live_intensity)
+	_apply_video_alpha()
+
+
+## 按当前叠化进度设置新旧视频的不透明度：旧 = fade，新 = 1−fade
+func _apply_video_alpha() -> void:
+	var a_new := clampf(1.0 - _video_fade, 0.0, 1.0) * _icon_fade
+	var c := _video_tint
+	c.a = a_new
+	_icon_video.modulate = c
+	if _icon_video_prev != null and _icon_video_prev.visible:
+		var cp := _video_tint
+		cp.a = clampf(_video_fade, 0.0, 1.0) * _icon_fade
+		_icon_video_prev.modulate = cp
+
+
+## 叠化推进（每帧）：结束就停掉旧播放器
+func _advance_video_fade(delta: float) -> void:
+	if _icon_video_prev == null or not _icon_video_prev.visible:
+		return
+	_video_fade = maxf(0.0, _video_fade - delta / VIDEO_FADE_SECONDS)
+	if _video_fade <= 0.0:
+		_icon_video_prev.stop()
+		_icon_video_prev.visible = false
+		_video_fade = 0.0
 
 
 ## 「消散」用淡出代替直接消失（1.2.0）。参考工程有专门的 `消散` 造型，
@@ -425,12 +516,17 @@ func _apply_icon_tint() -> void:
 	if simple:
 		base = ramp_color(live_intensity)
 	else:
-		# ⚠ IconTint 返回的是**度**（±180 量级），shader 的 hue_shift 要的是**圈数**
-		hue = IconTint.hue_shift_for(live_intensity) / 360.0
-		blue = IconTint.blue_mix_for(live_intensity)
-		bright = blue * 0.45
-		if GameSettings.icon_bright_ext:
-			bright = minf(bright + bright_for(live_intensity), 1.5)
+		# L / D 段（<34 kt）：用户 2026-10-31 定的「A 读法」——先取深蓝基础色，再偏移 −100°
+		base = IconTint.l_d_base_color(live_intensity)
+		hue = IconTint.l_d_hue_shift(live_intensity)
+		if live_intensity >= IconTint.D_MAX_KT:
+			# TS ~ C4（<137 kt）：不染色，用素材原色；C5+ 才查 HLS 表
+			# ⚠ IconTint 返回的是**度**（±180 量级），shader 的 hue_shift 要的是**圈数**
+			hue = IconTint.hue_shift_for(live_intensity) / 360.0
+			blue = IconTint.blue_mix_for(live_intensity)
+			bright = blue * 0.45
+			if GameSettings.icon_bright_ext:
+				bright = minf(bright + bright_for(live_intensity), 1.5)
 	_icon_tint_material.set_shader_parameter("hue_shift", hue)
 	_icon_tint_material.set_shader_parameter("bright", bright)
 	_icon_tint_material.set_shader_parameter("blue_mix", blue)
@@ -446,6 +542,11 @@ func _current_form() -> int:
 func _begin_icon_fade() -> void:
 	var sprite_on := _icon_outer != null and _icon_outer.visible
 	var video_on := _icon_video != null and _icon_video.visible
+	var video_prev_on := _icon_video_prev != null and _icon_video_prev.visible
+	if video_prev_on:
+		_icon_video_prev.stop()
+		_icon_video_prev.visible = false
+		_video_fade = 0.0
 	if not (sprite_on or video_on):
 		return
 	_icon_fading = true
@@ -462,6 +563,10 @@ func _hide_icon() -> void:
 		_icon_inner.visible = false
 	if _icon_video != null:
 		_icon_video.visible = false
+	if _icon_video_prev != null:
+		_icon_video_prev.stop()
+		_icon_video_prev.visible = false
+	_video_fade = 0.0
 
 
 # ------------------------- 绘制 -------------------------

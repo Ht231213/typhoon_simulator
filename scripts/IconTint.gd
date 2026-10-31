@@ -77,3 +77,19 @@ static func _c5_lookup(kt: float) -> float:
 			var yb: float = C5_UNITS[i + 1]
 			return lerpf(ya, yb, (kt - xa) / (xb - xa))
 	return C5_UNITS[n - 1]
+# ------------------------- L / D 段：深蓝基础色 + 色相 −100° -------------------------
+#
+# 用户 2026-10-31 定稿（「A 读法」）：「D 的 HSL 深蓝 + 色相 −100」= **先取深蓝基础色**，
+# 再在它上面做 −100° 的色相偏移（→ 偏蓝绿），而不是直接取色环上 −100° 的那个颜色。
+const D_BASE_COLOR := Color(0.20, 0.32, 0.62)   # 「HSL 深蓝」的近似（偏亮的深蓝）
+const D_HUE_DEG := -100.0                        # 再往蓝绿偏 -100°
+const D_MAX_KT := 34.0                           # L / D 段上限（超过就是 TS 及以上）
+
+## L / D 段的底色（乘法 tint）；>34 kt 返回白色（不改变原图）
+static func l_d_base_color(kt: float) -> Color:
+	return D_BASE_COLOR if kt < D_MAX_KT else Color.WHITE
+
+
+## L / D 段的色相偏移（圈数）；>34 kt 返回 0
+static func l_d_hue_shift(kt: float) -> float:
+	return D_HUE_DEG / 360.0 if kt < D_MAX_KT else 0.0

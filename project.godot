@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Typhoon"
-config/version="1.2.0-beta.3"
+config/version="1.2.0-beta.4"
 run/main_scene="res://TitleScreen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
