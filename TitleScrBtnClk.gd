@@ -35,6 +35,9 @@ func _ready() -> void:
 	else:
 		push_warning("标题 BGM 没找到（bgm_path=%s），音乐音量会不起作用" % bgm_path)
 
+	# 背景音乐（方案包 music.titlescreen；没有该 ID 就静音）
+	MusicManager.play_title()
+
 	single_button.pressed.connect(_on_single_ty_pressed)
 	board_button.pressed.connect(_on_board_pressed)
 	settings_button.pressed.connect(_on_app_settings_pressed)

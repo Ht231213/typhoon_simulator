@@ -73,6 +73,9 @@ func _ready() -> void:
 	header.text = HEADER_EXPANDED % HEADER_TITLE
 	content.visible = true
 
+	# 用户 2026-10-31：控件不用占满横向空间，200 px 足够（和最佳路径的选择框一致）
+	_normalize_control_widths()
+
 	# ⚠ 2026-10-17 用户更正定义：
 	#   **模式选项**（模拟模式 + 风季模式）属于「模拟单台」那个面板（标题画面），
 	#   **模拟设置**（本组件）只放**可调参数**，两者互相独立。
@@ -125,6 +128,15 @@ func setup(p_in_game: bool, p_season: bool) -> void:
 	refresh_from_store()
 	set_context(_in_game, _season)
 
+
+## 用户 2026-10-31：下拉/数值框不占满整行，统一 200 px 宽（和最佳路径选择框一致）
+func _normalize_control_widths() -> void:
+	for ctrl in [mode_option, best_track_format_option, mean_sst_spin, seasonal_amp_spin,
+			record_disturbances_check, best_track_check]:
+		if ctrl == null:
+			continue
+		ctrl.custom_minimum_size = Vector2(200, ctrl.custom_minimum_size.y)
+		ctrl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 
 ## 只改权限，不重读值。切换上下文（比如暂停菜单里又进了风季）时用。
 ## 权限规则只在这个函数里，改规则改这里就够：
@@ -192,7 +204,7 @@ func refresh_from_store() -> void:
 	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
 
 	# 导出方式：按值反查下标（不要假设存储里的格式一定在数组里——_load 有白名单，这里再兜一次）
-	var fmt_idx := GameSettings.BEST_TRACK_FORMATS.find(GameSettings.best_track_format)
+	var fmt_idx: int = GameSettings.BEST_TRACK_FORMATS.find(GameSettings.best_track_format)
 	best_track_format_option.select(maxi(fmt_idx, 0))
 
 	_update_dir_row()
@@ -315,7 +327,7 @@ func _on_best_track_toggled(pressed: bool) -> void:
 ## 导出方式：切格式**不清空已有轨迹**（采样与格式无关，一年只在年底写一次文件，
 ## 所以整份文件必然用切换后的格式；跨年延后写的那种边角也用新格式，可接受）。
 func _on_best_track_format_selected(index: int) -> void:
-	var formats := GameSettings.BEST_TRACK_FORMATS
+	var formats: Array[String] = GameSettings.BEST_TRACK_FORMATS
 	if index < 0 or index >= formats.size():
 		return
 	if GameSettings.best_track_format == formats[index]:

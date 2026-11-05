@@ -330,27 +330,27 @@ fill_usa_agency=false ; true = 额外把强度填进 USA 机构块（给只读 U
   仍然记成第 1 年（文件名靠重名后缀区分）。1.1.x 因为没跑过完整一年，一直没暴露。
 - 标题画面：「台风模拟」挪进左侧斜向栏、左下角加动态版本号（读 `application/config/version`）。
 
-### 图标 / 登陆特效 / 音效：两套方案（设置 → 预设）
+### 图标方案包（设置 → 预设 → 「方案」）
+
+**2026-11-06 最终版：方案包 = 一个文件夹**（不再用 zip；玩家自己解压放到这里）：
 
 ```
-Default    = 旧版「简单圆圈」：白环 + 白盘，颜色按风速连续渐变
-SMCY1.3    = SMCY 素材库那套图标（桌面版是视频，见下）
+<游戏目录>/assets/icons/<方案名>/
+├─ index.json          {"version":1,"type":"advanced","object":[{"mainicon.icon.north.c1":"mainicon/c1.ogv"}]}
+├─ mainicon/           图标视频/图片
+├─ landfall/           登陆特效视频 + 音效
+└─ particle/           粒子（eri / note_ts）
 ```
 
-- 两套方案都有，**三个下拉各自独立**（设置 → 预设）：
-  「图标方案」「特效方案」「音效方案」分别对应 `assets/icons|effects|sfx/<方案>/`，互不影响。
-- **⚠ 网页版的图标是静态两层方案，桌面版才是视频**：SMCY1.3 的图标素材原本是 30 秒的
-  `.mp4`（外圈两条弧线转速不同 + 中心还有两条弧线），桌面版转成 `.ogv` 用 `VideoStreamPlayer`
-  播放；浏览器对 Theora 视频的支持不可靠，所以 **web 版会自动回退成「外圈旋转 + 内圈静止」的
-  两层 PNG**（观感略差，但一定能显示）。两边的图标**看起来会有差异**，属预期行为。
-- 图标配色**按强度分段**（2026-10-30 按用户给的官方表）：
-  · C5+（≥137 kt）→ 用 `option/HLS-SSHWS.xlsx` 的「5」列查表，色相随风速连续变化，
-    ≥165 kt 再按 Sheet2 的 B 通道往蓝提（「亮蓝」）；
-  · L/D/TS ~ C4（<137 kt）→ **不染色**，直接用图标素材原色；
-  · 温带气旋（EX）→ 轨迹线用 `option/RGB-EX.txt` 的 RGB 渐变（图标本身不染色）。
-  「≥260 kt 白色阶段」默认关（变白会盖住数字/闪电），可在「预设」页勾选（只在 SMCY1.3 下出现）。
-- 图标显示直径 = **0.8 × 地图格子短边 ≈ 54 px**。
-- 标题画面背景音乐已撤掉（版权原因，后续换成合法授权的曲子再加）。
+- **不打包进 pck**（`export_presets.cfg` 的 `exclude_filter` 已排除），启动/打开设置时扫描一次，**不轮询**。
+- 下拉顺序：**Default（内建 1.1.1 观感：风圈 + 12 px 小点）→ Advanced default（内建彩色圆盘 + 等级文字）→ 各方案文件夹（按名字排序）**；
+  默认选中 **Default**。内建方案不读 `assets/icons/`、不走 `type`。
+- `type`：`single`（单图，不旋转不变色）/ `advanced`（标准 ID）/ `adv_extend`（+扩展 ID）。
+- 扩展 ID（`c5_155/170/200/250/300`）只在 `type=adv_extend` 且文件夹里真有该 ID 时覆盖；
+  否则 ≥170 kt 用 **C5 图标 + 渲染变蓝**，<170 恢复正常。
+- 视频抠像：`assets/shaders/video_unpremultiply.gdshader`（反预乘 + `blend_premul_alpha`）。
+- 音效：登陆音效 TD 不播；`c4`（113~136 kt）/ `c5_170`（≥170 kt）是背景循环（区间互斥）；`ts`/`suty`/`disperse`/`eri` 播一次。
+- 图标显示直径：方案 `index.json` 的 `icon_size` 优先，没有就用常量 `PathLayer.ICON_DIAMETER_FALLBACK`（默认 **80 px**）；内建方案固定用常量；>200 kt 额外放大最多 1.8×。
 
 ### 最佳路径导出目录（配置文件可调）
 
@@ -366,5 +366,7 @@ best_track_dir=""     ; 空 = 游戏根目录下的 BestTrack/；相对路径按
 
 - **目前完全没有音乐**：标题 BGM 因版权撤掉，「设置 → 音频」里的「音乐音量」滑块**暂时隐藏**
   （代码保留，换成合法授权的曲子后会重新显示）。游戏内只有音效（登陆音效按方案切换）。
-- **事件音效（形成 / 增强 / 减弱 / 消散）暂无素材**：逻辑和播放器都接好了，放文件到
-  `assets/sfx/<方案>/{form,intensify,weaken,dissipate}.ogg|wav` 就会自动生效，目前是静音。
+- **事件音效**走方案包里 `mainicon.sound.*` 的 ID（`eri`/`ts`/`suty`/`disperse`），没有素材时静音。
+- **Web 版暂停提供（2026-10-31）**：SMCY1.3 图标改用视频（Theora `.ogv`）后，浏览器不再支持，
+  因此只发 Windows 包；`export_presets.cfg` 里的 Web 预设保留（以后可能恢复）。
+  原来的 44 张 SMCY 两层 PNG 已**归档到工程外**（`G:\typhoon\temp\smcy1_3_png_backup\`，未删除）。

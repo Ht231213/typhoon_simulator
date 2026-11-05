@@ -12,23 +12,23 @@ extends Node
 signal changed
 
 const SAVE_PATH := "user://settings.cfg"
+## 方案包扫描（老配置迁移时要用）
+const IconPacksLoader := preload("res://scripts/IconPacks.gd")
 const BUS_MUSIC := "Music"
 const BUS_SFX := "SFX"
 
-## 视觉/音效「方案」（用户 2026-10-30 决定拆两套）。
-## 一个方案同时决定三样东西（A3）：
-##   · 图标   `assets/icons/<方案>/`
-##   · 登陆特效 `assets/effects/<方案>/`
-##   · 登陆音效 `assets/sfx/<方案>/landfall/*.wav`
-## ⚠ 2026-10-31 用户要求：**三个方案拆成独立设置**，各自独立保存、独立生效
-##   （以前一个「方案」下拉同时换三样）。
-const PRESET_SCHEMES: Array[String] = ["default", "smcy13"]
-## 下拉里**只显示方案名**（用户 2026-10-31：不要括号说明）
-const PRESET_LABELS := {
-	"default": "默认",
-	"smcy13": "SMCY1.3",
-}
-const DEFAULT_PRESET_SCHEME := "default"
+## 图标「方案包」（用户 2026-11-05 定）：
+##   一个 zip = 一套方案（图标 + 登陆特效 + 登陆音效全在里面）。
+##   方案包放在 `<游戏目录>/assets/icons/<方案名>.zip`，**不打包进 pck**；
+##   游戏启动时扫这个目录，`IconPacks` 负责读 index.json / 解压缓存。
+##   下拉的选项 = 内置 Default（程序化渲染）+ 扫描到的 zip/文件夹方案。
+## 内置方案（用户 2026-11-06）：两个都是代码内建、不读 zip、不走 type。
+##   Default          = 1.1.1 观感：风圈 + 12 px 小点（无彩色大圆盘、无文字）
+##   Advanced default = 当前这套：彩色大圆盘 + 等级文字 + 连续变色
+const BUILTIN_PACKS: Array[String] = ["Default", "Advanced default"]
+## 默认选中的内置方案（用户建议 Default，1.1.1 最朴素观感）
+const DEFAULT_PACK := "Default"
+const NO_PACK := DEFAULT_PACK
 
 # ------------------------- 设置项 -------------------------
 ## 音乐音量 0..1（线性，写入总线时转 dB）
@@ -37,8 +37,6 @@ var music_volume := 0.8
 var sfx_volume := 1.0
 ## 是否全屏
 var fullscreen := false
-## 音效方案名（独立设置，见 PRESET_SCHEMES）
-var sfx_preset := DEFAULT_PRESET_SCHEME
 
 # ------------------------- 模拟设置（1.1.0 新增）-------------------------
 # ⚠ 这些不是"玩家偏好"，而是**影响模拟结果的参数**。
@@ -65,42 +63,34 @@ const BEST_TRACK_FORMATS: Array[String] = ["noaa", "cma"]
 ## 风速显示单位：0=kt 1=m/s 2=km/h（对应 TyphoonSim.WIND_UNITS）
 var wind_unit_index := 0
 
-# ------------------------- 图标 / 登陆特效方案（1.2.1 新增）-------------------------
-# 值就是 `assets/icons/<名字>/` 或 `assets/effects/<名字>/` 的文件夹名。
-# 设置界面每次打开都**重新扫描**（外部目录 + 内置），所以用户新放一个文件夹就多一个选项；
-# 文件夹被删也不用管——取素材时找不到会自动回退 `default` 方案。
-## 台风图标方案
-var icon_scheme := "default"
-## 登陆特效方案
-var effect_scheme := "default"
-## 「170 kt+ 白色阶段」勾选：默认关（变白后 SMCY 图标上的数字/闪电看不清）。
-## 只在图标方案 = smcy13 时显示这个勾选框。
-var icon_bright_ext := false
+# ------------------------- 图标方案包（2026-11-05）-------------------------
+## 当前选中的方案包名（= `assets/icons/<名字>.zip` 的文件名，不含扩展名）。
+## "" = 不用方案包（全部程序化渲染）。
+var icon_pack := DEFAULT_PACK
 
 
-## 切换图标方案（独立设置）
-func set_icon_scheme(name: String) -> void:
-	if not PRESET_SCHEMES.has(name) or name == icon_scheme:
+## 切换方案包。名字必须真的存在（扫描目录里有的 zip），否则忽略。
+## 下拉选项：内置 Default 永远第一，后面是扫描到的 zip/文件夹方案（按名字排序）
+func pack_options() -> Array[String]:
+	var out: Array[String] = []
+	out.append_array(BUILTIN_PACKS)
+	for n in IconPacksLoader.pack_names():
+		if not BUILTIN_PACKS.has(n):
+			out.append(n)
+	return out
+
+
+## 是不是内置方案（内置方案不读 zip / 不走 type）
+static func is_builtin_pack(name: String) -> bool:
+	return BUILTIN_PACKS.has(name)
+
+
+func set_icon_pack(name: String) -> void:
+	if name == icon_pack:
 		return
-	icon_scheme = name
-	_save()
-	changed.emit()
-
-
-## 切换登陆特效方案（独立设置）
-func set_effect_scheme(name: String) -> void:
-	if not PRESET_SCHEMES.has(name) or name == effect_scheme:
+	if not is_builtin_pack(name) and not IconPacksLoader.pack_names().has(name):
 		return
-	effect_scheme = name
-	_save()
-	changed.emit()
-
-
-## 切换音效方案（独立设置）
-func set_sfx_scheme(name: String) -> void:
-	if not PRESET_SCHEMES.has(name) or name == sfx_preset:
-		return
-	sfx_preset = name
+	icon_pack = name
 	_save()
 	changed.emit()
 
@@ -109,6 +99,8 @@ func _ready() -> void:
 	_ensure_buses()
 	_route_music_players()
 	_load()
+	# ⚠ 临时诊断（B 阶段排错用，定位完删）
+	print("[IconPacks] 启动扫描：packs=%s selected=%s" % [str(IconPacksLoader.pack_names()), icon_pack])
 	apply_all()
 
 
@@ -189,13 +181,6 @@ func set_fullscreen(value: bool) -> bool:
 	return ok
 
 
-func set_sfx_preset(preset: String) -> void:
-	if PRESET_SCHEMES.has(preset) and preset != sfx_preset:
-		sfx_preset = preset
-		_save()
-		changed.emit()
-
-
 ## 供场景在运行时登记音乐播放器（比依赖场景里的 bus 属性可靠）
 func register_music_player(player: Node) -> void:
 	if player is AudioStreamPlayer:
@@ -221,32 +206,17 @@ func _apply_fullscreen(value: bool) -> void:
 	DisplayServer.window_set_mode(mode)
 
 
-# ============================ 音效预设路径 ============================
+# ============================ 方案包内的音效 ============================
+# 音效事件 ID 见 docs/图标方案-ZIP格式规范.md §六：
+#   landfall.sound.{ts,c1..c5}         登陆音效
+#   mainicon.sound.{eri,ts,suty,disperse,c4,c5_170}   事件音效
+# 取不到（zip 里没有这个 ID）→ 静音，不报错。
 
-func sfx_root() -> String:
-	return "res://assets/sfx/%s/" % sfx_preset
-
-
-## 登陆音效路径。index：0 = TS，1..5 = C1..C5。
-## ⚠ 两种素材格式：默认方案是 `.wav`，SMCY1.3 是官方 `.ogg` → 先找 ogg 再找 wav。
-func landfall_sfx_path(index: int) -> String:
-	const FILES: Array[String] = ["TS", "c1", "c2", "c3", "c4", "c5"]
-	var base := sfx_root() + "landfall/" + FILES[clampi(index, 0, FILES.size() - 1)]
-	return _first_existing([base + ".ogg", base + ".wav"])
-
-
-## 事件音效（2026-10-30 新增）：form 形成 / intensify 增强 / weaken 减弱 / dissipate 消散。
-## 素材**目前没有**（SMCY 库里只有 landfall 音效）→ 返回 ""，游戏里就是静音，以后放了素材自动生效。
-func event_sfx_path(kind: String) -> String:
-	var base := sfx_root() + kind
-	return _first_existing([base + ".ogg", base + ".wav"])
-
-
-func _first_existing(paths: Array) -> String:
-	for p in paths:
-		if ResourceLoader.exists(p):
-			return p
-	return ""
+## 登陆音效 ID：0 = TS，1..5 = C1..C5（热带低压没有专用音效）
+func landfall_sound_id(index: int) -> String:
+	const IDS: Array[String] = ["landfall.sound.ts", "landfall.sound.c1", "landfall.sound.c2",
+		"landfall.sound.c3", "landfall.sound.c4", "landfall.sound.c5"]
+	return IDS[clampi(index, 0, IDS.size() - 1)]
 
 
 # ============================ 存档 ============================
@@ -255,11 +225,8 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("audio", "music_volume", music_volume)
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
-	cfg.set_value("audio", "sfx_preset", sfx_preset)
 	cfg.set_value("video", "fullscreen", fullscreen)
-	cfg.set_value("video", "icon_bright_ext", icon_bright_ext)
-	cfg.set_value("video", "icon_scheme", icon_scheme)
-	cfg.set_value("video", "effect_scheme", effect_scheme)
+	cfg.set_value("video", "icon_pack", icon_pack)
 	# 模拟设置
 	cfg.set_value("sim", "mean_sst", mean_sst)
 	cfg.set_value("sim", "seasonal_amplitude", seasonal_amplitude)
@@ -273,6 +240,19 @@ func _save() -> void:
 		push_warning("设置写入失败：%s" % SAVE_PATH)
 
 
+## 老「方案名」→ 新「方案包名」：旧的 default/smcy1_3/smcy13 → 扫描到的 SMCY 包（没有就空）
+static func _migrate_scheme_to_pack(old: String) -> String:
+	var packs := IconPacksLoader.pack_names()
+	if old in ["smcy1_3", "smcy13", "SMCY1.3", "SMCY"]:
+		for n in packs:
+			if n.to_lower().begins_with("smcy"):
+				return n
+		return ""
+	if packs.has(old):
+		return old
+	return ""
+
+
 func _load() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
@@ -280,22 +260,17 @@ func _load() -> void:
 	music_volume = clampf(float(cfg.get_value("audio", "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx_volume", sfx_volume)), 0.0, 1.0)
 	fullscreen = bool(cfg.get_value("video", "fullscreen", fullscreen))
-	# 三个方案各自独立（2026-10-31 用户要求）。
-	# 老配置迁移：以前只有一个 `preset_scheme`（或音效的 `sfx_preset="zmrtysimu"`）→ 三样都取它。
-	var old_scheme := str(cfg.get_value("video", "preset_scheme", ""))
-	if old_scheme == "":
-		old_scheme = str(cfg.get_value("audio", "sfx_preset", DEFAULT_PRESET_SCHEME))
-	if old_scheme == "zmrtysimu":
-		old_scheme = "default"
-	if not PRESET_SCHEMES.has(old_scheme):
-		old_scheme = DEFAULT_PRESET_SCHEME
-	var icon_s := str(cfg.get_value("video", "icon_scheme", old_scheme))
-	var effect_s := str(cfg.get_value("video", "effect_scheme", old_scheme))
-	var sfx_s := str(cfg.get_value("audio", "sfx_preset", old_scheme))
-	icon_scheme = icon_s if PRESET_SCHEMES.has(icon_s) else DEFAULT_PRESET_SCHEME
-	effect_scheme = effect_s if PRESET_SCHEMES.has(effect_s) else DEFAULT_PRESET_SCHEME
-	sfx_preset = sfx_s if PRESET_SCHEMES.has(sfx_s) else DEFAULT_PRESET_SCHEME
-	icon_bright_ext = bool(cfg.get_value("video", "icon_bright_ext", icon_bright_ext))
+	# 方案包（2026-11-05）。老配置迁移：以前选的图标方案名是 default/smcy1_3，
+	# 对应现在的方案包文件名 → 优先沿用，找不到就留空（程序化渲染）。
+	var saved_pack := str(cfg.get_value("video", "icon_pack", ""))
+	if saved_pack == "":
+		var old_scheme := str(cfg.get_value("video", "icon_scheme", ""))
+		if old_scheme == "" or old_scheme == "default":
+			old_scheme = str(cfg.get_value("audio", "sfx_preset", ""))
+		saved_pack = _migrate_scheme_to_pack(old_scheme)
+	# ⚠ 默认 = 内置 Default（1.1.1 观感）。保存过且合法（内置或真实存在的 zip）才沿用。
+	var packs := IconPacksLoader.pack_names()
+	icon_pack = saved_pack if (is_builtin_pack(saved_pack) or packs.has(saved_pack)) else DEFAULT_PACK
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)
 	seasonal_amplitude = clampf(

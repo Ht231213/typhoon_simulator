@@ -1,0 +1,109 @@
+{
+ "version": 1,
+ "type": "advanced",
+ "icon_size": 100,
+ "object": [
+  {
+   "mainicon.icon.north.x": "mainicon/mainicon_icon_north_x.ogv"
+  },
+  {
+   "mainicon.icon.north.l": "mainicon/mainicon_icon_north_l.ogv"
+  },
+  {
+   "mainicon.icon.north.ex": "mainicon/mainicon_icon_north_ex.ogv"
+  },
+  {
+   "mainicon.icon.north.d": "mainicon/mainicon_icon_north_d.ogv"
+  },
+  {
+   "mainicon.icon.north.ts": "mainicon/mainicon_icon_north_ts.ogv"
+  },
+  {
+   "mainicon.icon.north.c1": "mainicon/mainicon_icon_north_c1.ogv"
+  },
+  {
+   "mainicon.icon.north.c2": "mainicon/mainicon_icon_north_c2.ogv"
+  },
+  {
+   "mainicon.icon.north.c3": "mainicon/mainicon_icon_north_c3.ogv"
+  },
+  {
+   "mainicon.icon.north.c4": "mainicon/mainicon_icon_north_c4.ogv"
+  },
+  {
+   "mainicon.icon.north.c5": "mainicon/mainicon_icon_north_c5.ogv"
+  },
+  {
+   "mainicon.icon.south.c1": "mainicon/mainicon_icon_south_c1.ogv"
+  },
+  {
+   "mainicon.icon.south.c2": "mainicon/mainicon_icon_south_c2.ogv"
+  },
+  {
+   "mainicon.icon.south.c3": "mainicon/mainicon_icon_south_c3.ogv"
+  },
+  {
+   "landfall.icon.d": "landfall/landfall_icon_d.ogv"
+  },
+  {
+   "landfall.icon.ts": "landfall/landfall_icon_ts.ogv"
+  },
+  {
+   "landfall.icon.c1": "landfall/landfall_icon_c1.ogv"
+  },
+  {
+   "landfall.icon.c2": "landfall/landfall_icon_c2.ogv"
+  },
+  {
+   "landfall.icon.c3": "landfall/landfall_icon_c3.ogv"
+  },
+  {
+   "landfall.icon.c4": "landfall/landfall_icon_c4.ogv"
+  },
+  {
+   "landfall.icon.c5": "landfall/landfall_icon_c5.ogv"
+  },
+  {
+   "landfall.sound.ts": "landfall/landfall_sound_ts.ogg"
+  },
+  {
+   "landfall.sound.c1": "landfall/landfall_sound_c1.ogg"
+  },
+  {
+   "landfall.sound.c2": "landfall/landfall_sound_c2.ogg"
+  },
+  {
+   "landfall.sound.c3": "landfall/landfall_sound_c3.ogg"
+  },
+  {
+   "landfall.sound.c4": "landfall/landfall_sound_c4.ogg"
+  },
+  {
+   "landfall.sound.c5": "landfall/landfall_sound_c5.ogg"
+  },
+  {
+   "mainicon.sound.eri": "sound/mainicon_sound_eri.ogg"
+  },
+  {
+   "mainicon.sound.ts": "sound/mainicon_sound_ts.ogg"
+  },
+  {
+   "mainicon.sound.suty": "sound/mainicon_sound_suty.ogg"
+  },
+  {
+   "mainicon.sound.disperse": "sound/mainicon_sound_disperse.ogg"
+  },
+  {
+   "mainicon.sound.c4": "sound/mainicon_sound_c4.ogg"
+  },
+  {
+   "mainicon.sound.c5_170": "sound/mainicon_sound_c5_170.ogg"
+  },
+  {
+   "particle.eri": "particle/particle_eri.ogv"
+  },
+  {
+   "particle.note_ts": "particle/particle_note_ts.ogv"
+  }
+ ]
+}

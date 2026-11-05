@@ -45,18 +45,24 @@ const LANDFALL_FILES: Array[String] = ["TS.wav", "c1.wav", "c2.wav", "c3.wav", "
 var _sfx_players: Array[AudioStreamPlayer] = []
 ## 事件音效（2026-10-30）：form 形成 / intensify 增强 / weaken 减弱 / dissipate 消散
 ## 素材目前没有（SMCY 库只有 landfall 音效）→ 播放器建好但没有 stream = 静音，以后放素材自动生效
-const EVENT_SFX_KINDS: Array[String] = ["form", "intensify", "weaken", "dissipate"]
+## 事件音效种类 → 方案包 ID（见 event_sound_id；没有素材就静音）
+## 一次性事件音效（背景循环音效单独处理：c4 / c5_170）
+const EVENT_SFX_KINDS: Array[String] = ["ts", "suty", "disperse", "eri"]
+## 一次性事件音效播放器
 var _event_players: Dictionary = {}
+## 背景循环音效播放器（c4 / c5_170，高等级优先）
+var _bg_players: Dictionary = {}
 ## 事件音效冷却（毫秒）：防止档位在边界来回抖导致"滴滴滴"
 const EVENT_SFX_COOLDOWN_MS := 2000
 var _event_sfx_last_ms: Dictionary = {}
 ## 上一 tick 的类别（用来判断升档/降档）；999 = 还没初始化
 var _prev_category := 999
+## 上一 tick 的风速（跨 170 kt 门槛判定用）
+var _prev_kt := 0.0
+## 最近 1 秒内的档位变化记录（E 组「连跳两级」判定）: [{"ms": int, "from": int, "to": int}]
+var _cat_hist: Array = []
 
 
-## 音效路径由「音频设置」里的预设决定（GameSettings.landfall_sfx_path）
-func landfall_sfx_path(index: int) -> String:
-	return GameSettings.landfall_sfx_path(index)
 
 var _rng := RandomNumberGenerator.new()
 ## 风季起点（模拟日）。用已过去的天数判断是否满 12 个月，
@@ -165,10 +171,11 @@ func _physics_process(delta: float) -> void:
 	# 参考「计算海区与气压」最后一步：`replace item 对应海区 of 气压数据 with 气压`
 	# 把当前中心气压写进所在格，气压图层才有东西显示。
 	field.set_pressure_at(cell, storm.central_pressure)
-	path.set_live_position(pos, storm.wind_kt, storm.phase as int)
+	path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
 	# 类别与巅峰值连续更新（参考就是在每轮循环里调的）
 	storm.tick_live()
 	_check_category_sfx(storm)
+	_update_background_sfx(storm.wind_kt, int(storm.category))
 
 	# ⑨ 最佳路径采样（内部按 6 模拟小时节流，不是每 tick 都记）
 	best_track.sample(storm)
@@ -626,35 +633,115 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	storm.northern = storm.latitude > 0.0
 	active_storm = storm
 	path.clear_track()
-	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int)
+	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
-	# 事件音效：形成（素材没有时静音）
 	_prev_category = 999
-	_play_event_sfx("form")
+	_prev_kt = storm.wind_kt
+	_cat_hist.clear()
+	MusicManager.play_sim()
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
 	state_changed.emit()
 
 
-## 档位变化 → 增强/减弱音效（带冷却，防止档位在边界抖动时连响）
+## 档位变化 → 方案包事件音效（ID 见 docs/图标方案-ZIP格式规范.md §六）
+##   mainicon.sound.ts      强度达到热带风暴
+##   mainicon.sound.c4      达到四级台风（背景音效）
+##   mainicon.sound.suty    达到超强台风（本工程按 C5 = 137 kt 起算）
+##   mainicon.sound.c5_170  达到 170 kt
+##   mainicon.sound.eri     1 秒内连跳两级且 ≥C1（在粒子事件里）
+##   mainicon.sound.disperse 消散 / 转成温带
 func _check_category_sfx(storm: Storm) -> void:
 	var cat := int(storm.category)
+	var kt := storm.wind_kt
 	if cat == _prev_category:
+		_prev_kt = kt
 		return
 	var prev := _prev_category
+	var prev_kt := _prev_kt
 	_prev_category = cat
+	_prev_kt = kt
 	if prev == 999:
 		return                          # 第一个 tick 只记状态
-	# 只在「命名台风」之间或跨越命名线时响；弱涡/温带档之间抖动太频繁
-	if cat < Const.CAT_NAMED and prev < Const.CAT_NAMED:
-		return
-	if cat > prev:
-		_play_event_sfx("intensify")
-	elif cat < prev:
-		_play_event_sfx("weaken")
+	# 跨档时按「跨过了哪些门槛」放对应的声音
+	if prev < Const.CAT_TROPICAL_STORM and cat >= Const.CAT_TROPICAL_STORM:
+		_play_event_sfx("ts")
+	if prev < Const.CAT_C5 and cat >= Const.CAT_C5:
+		_play_event_sfx("suty")           # 一次性（不循环）
+	if cat < Const.CAT_NAMED and prev >= Const.CAT_NAMED:
+		_play_event_sfx("disperse")
+	_check_particle_events(storm, prev, cat)
 
 
-## 播放事件音效。没有素材（stream == null）就静音，不报错。
+## E 组（2026-10-31）：档位瞬间特效
+##   note_ts → TD(-1) 增强为 TS(0) 的那一下（**不做相位对齐**）
+##   eri     → 1 秒内累计升 ≥2 级，且跳完 ≥ C1
+func _check_particle_events(storm: Storm, prev: int, cat: int) -> void:
+	var now := Time.get_ticks_msec()
+	_cat_hist.append({"ms": now, "from": prev, "to": cat})
+	while not _cat_hist.is_empty() and now - int(_cat_hist[0]["ms"]) > 1000:
+		_cat_hist.pop_front()
+	# note_ts：TD → TS 的瞬间
+	if prev == Const.CAT_DEPRESSION and cat == Const.CAT_TROPICAL_STORM:
+		path.play_effect_video("note_ts", storm.current_world_position())
+		_play_event_sfx("ts")
+	# ERI：统计 1 秒内的累计升幅
+	var gain := 0
+	for e in _cat_hist:
+		gain += int(e["to"]) - int(e["from"])
+	if gain >= 2 and cat >= Const.CAT_C1:
+		path.play_effect_video("eri", storm.current_world_position())
+		_play_event_sfx("eri")
+		_cat_hist.clear()          # 同一波只放一次
+
+
+## 事件音效 kind → 方案包内事件 ID（docs/图标方案-ZIP格式规范.md §六）
+static func event_sound_id(kind: String) -> String:
+	match kind:
+		"eri":
+			return "mainicon.sound.eri"
+		"ts":
+			return "mainicon.sound.ts"
+		"suty":
+			return "mainicon.sound.suty"
+		"disperse":
+			return "mainicon.sound.disperse"
+		"c4":
+			return "mainicon.sound.c4"
+		"c5_170":
+			return "mainicon.sound.c5_170"
+	return ""
+
+
+''## 停掉所有背景循环音效（台风结束/取消/新台风开始时）
+func _stop_background_sfx() -> void:
+	for kind in _bg_players.keys():
+		var p := _bg_players[kind] as AudioStreamPlayer
+		if p != null and p.playing:
+			p.stop()
+
+
+## 背景循环音效（用户 2026-11-05 更正）：
+##   C4（113~136 kt）→ 循环 mainicon.sound.c4
+##   ≥170 kt        → 循环 mainicon.sound.c5_170
+##   137~169（C5）  → 素材没有背景音，静音
+##   其余            → 静音
+## ⚠ 两个区间**互斥**（中间隔着 C5），不需要优先级判断。
+func _update_background_sfx(kt: float, _cat: int) -> void:
+	var wants_c4 := kt >= 113.0 and kt < 137.0
+	var wants_c5_170 := kt >= 170.0
+	for kind in _bg_players.keys():
+		var p := _bg_players[kind] as AudioStreamPlayer
+		if p == null or p.stream == null:
+			continue
+		var want := wants_c5_170 if kind == "c5_170" else wants_c4
+		if want and not p.playing:
+			p.play()
+		elif not want and p.playing:
+			p.stop()
+
+
+## 播放事件音效。没有素材（stream == null）就静音，不报错。'
 func _play_event_sfx(kind: String) -> void:
 	var player: AudioStreamPlayer = _event_players.get(kind)
 	if player == null or player.stream == null:
@@ -680,8 +767,10 @@ func _finish_storm() -> void:
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
 	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
-	_play_event_sfx("dissipate")         # 事件音效：消散（没素材就静音）
+	_play_event_sfx("disperse")          # 事件音效：消散 / 转温（没素材就静音）
 	active_storm = null
+	_stop_background_sfx()
+	MusicManager.stop_sim()
 	path.live_visible = false
 	path.queue_redraw()
 	# 冷却只在风季模式生效（非风季模式不显示也不需要等）
@@ -705,8 +794,11 @@ func _maybe_auto_deploy() -> void:
 # ============================ 登陆 ============================
 
 func _on_landfall(storm: Storm) -> void:
-	path.spawn_landfall_effect(storm.current_world_position(), storm.wind_kt)
-	_play_landfall_sfx(storm)
+	# 用户 2026-10-31：登陆特效/音效的**最低档是 TD（热带低压）**，L/扰动 不播
+	# （之前按"只要有音效就放"实现得太早，低档扰动登陆也会炸个特效）
+	if int(storm.category) >= Const.CAT_DEPRESSION:
+		path.spawn_landfall_effect(storm.current_world_position(), storm.wind_kt)
+		_play_landfall_sfx(storm)
 	notice.emit("%s 登陆！" % storm.storm_name)
 	state_changed.emit()
 
@@ -719,27 +811,37 @@ func _setup_sfx() -> void:
 	for kind in _event_players.keys():
 		(_event_players[kind] as AudioStreamPlayer).queue_free()
 	_event_players.clear()
+	for kind in _bg_players.keys():
+		(_bg_players[kind] as AudioStreamPlayer).queue_free()
+	_bg_players.clear()
+	# 事件音效：从方案包的 mainicon.sound.* 取（没有就静音，不报错）
 	for kind in EVENT_SFX_KINDS:
 		var ep := AudioStreamPlayer.new()
 		ep.bus = GameSettings.BUS_SFX
 		add_child(ep)
-		var epath := GameSettings.event_sfx_path(kind)
-		if epath != "":
-			ep.stream = load(epath)   # 有素材才出声，没有就是静音
+		ep.stream = IconPacks.audio(GameSettings.icon_pack, event_sound_id(kind))
 		_event_players[kind] = ep
+	# 登陆音效：landfall.sound.{ts,c1..c5}
 	for i in LANDFALL_FILES.size():
 		var player := AudioStreamPlayer.new()
-		player.bus = GameSettings.BUS_SFX      # 走音效总线，受音频设置里的音效音量控制
+		player.bus = GameSettings.BUS_SFX
 		player.volume_db = 0.0
 		add_child(player)
 		_sfx_players.append(player)
-		var res_path := landfall_sfx_path(i)
-		# 素材缺失不报错，只是不播放
-		if ResourceLoader.exists(res_path):
-			player.stream = load(res_path)
+		player.stream = IconPacks.audio(GameSettings.icon_pack, GameSettings.landfall_sound_id(i))
+	# 背景循环音效：c4（进 C4 开始循环）/ c5_170（进 170+ 开始循环，高等级优先）
+	for kind in ["c4", "c5_170"]:
+		var bp := AudioStreamPlayer.new()
+		bp.bus = GameSettings.BUS_SFX
+		add_child(bp)
+		var st := IconPacks.audio(GameSettings.icon_pack, event_sound_id(kind))
+		if st is AudioStreamOggVorbis:
+			(st as AudioStreamOggVorbis).loop = true
+		bp.stream = st
+		_bg_players[kind] = bp
 
 
-## 切换到音效预设后重建播放器。由 GameSettings.changed 信号触发。
+## 切换到方案包后重建播放器。由 GameSettings.changed 信号触发。
 func rebuild_sfx() -> void:
 	_setup_sfx()
 
@@ -752,14 +854,14 @@ func _sync_best_track_state() -> void:
 	# 导出格式跟着设置走（中途切格式不清空已有轨迹：采样与格式无关，一年只写一次文件）
 	best_track.format_id = GameSettings.best_track_format
 
-## 音效预设变了才重建播放器 —— 「模拟设置」页里改个海温也会触发 changed，
-## 不该因此把音效播放器推倒重来。
-var _sfx_preset_last := ""
+## 方案包变了才重建音效播放器 —— 「模拟设置」页里改个海温也会触发 changed，
+## 不该因此把播放器推倒重来。
+var _pack_last := ""
 
 func _on_settings_changed() -> void:
 	_sync_best_track_state()
-	if GameSettings.sfx_preset != _sfx_preset_last:
-		_sfx_preset_last = GameSettings.sfx_preset
+	if GameSettings.icon_pack != _pack_last:
+		_pack_last = GameSettings.icon_pack
 		rebuild_sfx()
 
 
@@ -773,24 +875,17 @@ static func Storm_category_index(kt: float) -> int:
 
 
 func _play_landfall_sfx(storm: Storm) -> void:
+	# 用户 2026-10-31：登陆音效要和**登陆特效动画同时**开始（就在 _on_landfall 里紧接着
+	# spawn_landfall_effect 调用，同一 tick）。
+	# ⚠ 素材里没有 TD 专用音效（SMCY 只有 sound.landfall.TS / C1..C6）→ TD/扰动落到 TS 音效
 	var idx := Storm_category_index(storm.wind_kt)
 	if idx < 0:
-		return                       # 参考：类型 < 0 不放登陆音效
+		idx = 0
 	idx = clampi(idx, 0, LANDFALL_FILES.size() - 1)
 	var player := _sfx_players[idx]
 	if player.stream != null:
 		player.play()
-	else:
-		notice.emit("登陆音效缺失：%s" % landfall_sfx_path(idx).replace("res://", ""))
-
-
-func sfx_missing() -> Array[String]:
-	var missing: Array[String] = []
-	for i in LANDFALL_FILES.size():
-		var p := landfall_sfx_path(i)
-		if not ResourceLoader.exists(p):
-			missing.append(p)
-	return missing
+	# 没有素材 → 静音（不打扰玩家）
 
 
 # ============================ 风季模式 ============================

@@ -963,33 +963,30 @@ static func form_to_category(form: int) -> int:
 			return CAT_WEAK          # 消散 / 残涡 / 未知
 
 
-## 侧栏「类别」栏的中文显示。
-## 参考里给 −2/−1 分别起名「热带扰动」「热带低压」，0 起是命名台风，
-## 1..5 直接用参考自己的 C1..C5 列表。
+## 等级的用户可见文字（用户 2026-10-31：内部数字保留，**显示一律用文字**）。
+##   L  = 扰动/弱低压（-3 / -2）
+##   TD = 热带低压（-1）
+##   TS = 热带风暴（0）
+##   C1..C5 = 1..5
+##   EX = 已变性温带气旋（-4）
 static func category_label(cat: int) -> String:
 	match cat:
-		CAT_EXTRATROPICAL: return "温带气旋"
-		CAT_WEAK: return "热带扰动"
-		CAT_DISTURBANCE: return "热带扰动"
-		CAT_DEPRESSION: return "热带低压"
-		CAT_TROPICAL_STORM: return "热带风暴"
-		CAT_C1, CAT_C2, CAT_C3, CAT_C4, CAT_C5:
-			return "C%d" % cat
-	return "未知"
+		CAT_EXTRATROPICAL: return "EX"
+		CAT_WEAK, CAT_DISTURBANCE: return "L"
+		CAT_DEPRESSION: return "TD"
+		CAT_TROPICAL_STORM: return "TS"
+		CAT_C1: return "C1"
+		CAT_C2: return "C2"
+		CAT_C3: return "C3"
+		CAT_C4: return "C4"
+		CAT_C5: return "C5"
+	return "L"
 
 
-## 战报里的短标签。
-## ⚠ 类型 0 是**热带风暴（TS）**，不是 C0——参考里 1..5 才是 C1..C5
-##   （看它的登陆音效分支：类型 0 放 ts，类型 1..5 放 c1..c5）。
-##   类型 < 0 表示还没到命名门槛，参考只记台风名，这里给个 TD 占位。
+## 战报/台风列表的短标签（用户 2026-10-31：和 category_label 用同一套文字）。
+## ⚠ 类型 0 是**热带风暴（TS）**，不是 C0；类型 < 0（未命名）统一显示 **L**。
 static func category_short(cat: int) -> String:
-	if cat < CAT_NAMED:
-		return "TD"
-	if cat == CAT_TROPICAL_STORM:
-		return "TS"
-	if cat > CAT_C5:
-		return "C5"
-	return "C%d" % cat
+	return category_label(cat)
 
 
 # ============================ 配色 ============================

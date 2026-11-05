@@ -27,10 +27,10 @@ extends Control
 @onready var hint_label: Label = %HintLabel
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
-var icon_scheme_option: OptionButton = null
-var effect_scheme_option: OptionButton = null
-var sfx_scheme_option: OptionButton = null
-var bright_ext_check: CheckBox = null
+## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
+var pack_option: OptionButton = null
+## 扫描到的方案包名（下拉项顺序 = 这个数组）
+var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
 
 ## 关闭时的回调（由打开方注入）
@@ -91,38 +91,23 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 	lbl.text = label_text
 	row.add_child(lbl)
 	var opt := OptionButton.new()
-	opt.custom_minimum_size = Vector2(0, 44)
-	opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# 用户 2026-10-31：控件不用占满横向，200 px 足够（和最佳路径的选择框一致）
+	opt.custom_minimum_size = Vector2(200, 44)
+	opt.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	opt.add_theme_font_size_override("font_size", 19)
 	opt.tooltip_text = tooltip
 	row.add_child(opt)
 	return opt
 
 
-## 预设页：图标方案 / 特效方案 / 音效方案（各自独立）+ 白色阶段 + 单位
-## ⚠ 用户 2026-10-31：下拉里**只写方案名**；版面上**不要任何介绍性文字**（tooltip 可以留）。
+## 预设页：**方案**（一个 zip = 图标 + 登陆特效 + 登陆音效）+ 单位
+## ⚠ 用户 2026-11-05：三个下拉合成一个；白色阶段勾选删除；版面不要介绍性文字。
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	icon_scheme_option = _add_option_row(page, "图标方案", "台风图标的素材方案")
-	_fill_scheme_option(icon_scheme_option)
-	icon_scheme_option.item_selected.connect(_on_icon_scheme_selected)
-
-	effect_scheme_option = _add_option_row(page, "特效方案", "登陆特效的素材方案")
-	_fill_scheme_option(effect_scheme_option)
-	effect_scheme_option.item_selected.connect(_on_effect_scheme_selected)
-
-	sfx_scheme_option = _add_option_row(page, "音效方案", "登陆音效的素材方案")
-	_fill_scheme_option(sfx_scheme_option)
-	sfx_scheme_option.item_selected.connect(_on_sfx_scheme_selected)
-
-	bright_ext_check = CheckBox.new()
-	bright_ext_check.text = "白色阶段"
-	bright_ext_check.custom_minimum_size = Vector2(0, 44)
-	bright_ext_check.add_theme_font_size_override("font_size", 19)
-	bright_ext_check.tooltip_text = "打开后 ≥260 kt 的图标会变成白色（会盖住数字/闪电）"
-	bright_ext_check.toggled.connect(_on_bright_ext_toggled)
-	page.add_child(bright_ext_check)
+	pack_option = _add_option_row(page, "方案", "方案包（assets/icons/<名字>.zip）：图标、登陆特效、音效都从里面取")
+	_refresh_pack_options()
+	pack_option.item_selected.connect(_on_pack_selected)
 
 	unit_option = _add_option_row(page, "单位", "风速显示单位")
 	for unit in TyphoonSim.WIND_UNITS:
@@ -133,13 +118,29 @@ func _build_preset_page() -> void:
 	pages.move_child(pages.get_child(pages.get_child_count() - 1), 0)
 
 
-## 填充方案下拉：item id = PRESET_SCHEMES 下标，文字只显示方案名
-func _fill_scheme_option(option: OptionButton) -> void:
-	option.clear()
-	var idx := 0
-	for name in GameSettings.PRESET_SCHEMES:
-		option.add_item(str(GameSettings.PRESET_LABELS.get(name, name)), idx)
-		idx += 1
+## 重新扫描方案包并填充下拉（每次打开设置都扫，用户新放 zip 立刻可见）
+func _refresh_pack_options() -> void:
+	if pack_option == null:
+		return
+	_pack_names = GameSettings.pack_options()
+	pack_option.clear()
+	for i in _pack_names.size():
+		var name := _pack_names[i]
+		pack_option.add_item(name)
+		# version 和游戏不匹配 → 方案名标黄（不弹窗、不报错；内置 Default 不参与）
+		if not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name):
+			pack_option.set_item_custom_fg_color(i, Color(1.0, 0.85, 0.2))
+	if _pack_names.is_empty():
+		pack_option.add_item("（无方案包）")
+		pack_option.disabled = true
+	else:
+		pack_option.disabled = false
+
+
+## 当前选中的方案索引（找不到 = 0）
+func _current_pack_index() -> int:
+	var i := _pack_names.find(GameSettings.icon_pack)
+	return maxi(i, 0)
 
 
 ## 模拟设置页（1.1.0）：只放可调参数，不含模式选项
@@ -174,12 +175,14 @@ func open() -> void:
 	sfx_slider.set_value_no_signal(GameSettings.sfx_volume * 100.0)
 	_refresh_volume_labels()
 
-	# 预设页（三个方案各自独立）
-	icon_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.icon_scheme), 0))
-	effect_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.effect_scheme), 0))
-	sfx_scheme_option.select(maxi(GameSettings.PRESET_SCHEMES.find(GameSettings.sfx_preset), 0))
-	bright_ext_check.set_pressed_no_signal(GameSettings.icon_bright_ext)
-	bright_ext_check.visible = GameSettings.icon_scheme == "smcy13"
+	# 音乐滑块：方案包里有任何 music.* ID 才显示（用户 2026-11-06）
+	var music_row := music_slider.get_parent() as Control
+	if music_row != null:
+		music_row.visible = MusicManager.has_music()
+
+	# 预设页：方案包（每次打开重新扫，能看到用户新放的文件夹）
+	_refresh_pack_options()
+	pack_option.select(_current_pack_index())
 	unit_option.select(clampi(int(GameSettings.wind_unit_index), 0, TyphoonSim.WIND_UNITS.size() - 1))
 
 	# 回到第一个选项卡。用 tab_count 判断，避免标签还没同步时报越界
@@ -219,36 +222,11 @@ func _on_sfx_changed(value: float) -> void:
 	_refresh_volume_labels()
 
 
-## 图标方案（独立）
-func _on_icon_scheme_selected(index: int) -> void:
-	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
+## 方案包：立即生效 + 落盘
+func _on_pack_selected(index: int) -> void:
+	if index < 0 or index >= _pack_names.size():
 		return
-	GameSettings.set_icon_scheme(GameSettings.PRESET_SCHEMES[index])
-	# 「白色阶段」只在 SMCY1.3 下显示
-	bright_ext_check.visible = GameSettings.icon_scheme == "smcy13"
-
-
-## 特效方案（独立）
-func _on_effect_scheme_selected(index: int) -> void:
-	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
-		return
-	GameSettings.set_effect_scheme(GameSettings.PRESET_SCHEMES[index])
-
-
-## 音效方案（独立）
-func _on_sfx_scheme_selected(index: int) -> void:
-	if index < 0 or index >= GameSettings.PRESET_SCHEMES.size():
-		return
-	GameSettings.set_sfx_scheme(GameSettings.PRESET_SCHEMES[index])
-
-
-## 「170 kt+ 亮蓝扩展」（B4）：立即生效 + 落盘
-func _on_bright_ext_toggled(pressed: bool) -> void:
-	if GameSettings.icon_bright_ext == pressed:
-		return
-	GameSettings.icon_bright_ext = pressed
-	GameSettings.commit()
-	GameSettings.changed.emit()
+	GameSettings.set_icon_pack(_pack_names[index])
 
 
 ## 风速单位：只影响显示，立即落盘
