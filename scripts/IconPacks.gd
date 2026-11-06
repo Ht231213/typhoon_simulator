@@ -153,7 +153,13 @@ static func load_index(pack: String) -> Dictionary:
 					var has_color := str(sd.get("color", "")).strip_edges() != ""
 					var has_bright := sd.has("brightness")
 					var has_hue := sd.has("hue_shift")
-					if not has_color and not has_bright and not has_hue:
+					var is_bgs := str(eid).begins_with("mainicon.bgs.")
+					var has_gradient := sd.has("gradient")
+					if is_bgs and has_gradient:
+						# bgs 只允许 gradient；出现 color/brightness/hue_shift → warning 并忽略
+						if has_color or has_bright or has_hue:
+							push_warning("[IconPacks] %s：bgs 条目只能带 gradient，其它字段已忽略：%s" % [pack, str(eid)])
+					elif not has_color and not has_bright and not has_hue:
 						push_warning("[IconPacks] %s：effect %s 缺 color/brightness，已忽略" % [pack, str(eid)])
 						continue
 					if not effects.has(str(eid)):

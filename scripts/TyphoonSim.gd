@@ -48,6 +48,8 @@ var _sfx_players: Array[AudioStreamPlayer] = []
 ## 事件音效种类 → 方案包 ID（见 event_sound_id；没有素材就静音）
 ## 一次性事件音效（背景循环音效单独处理：c4 / c5_170）
 const EVENT_SFX_KINDS: Array[String] = ["ts", "suty", "disperse", "eri"]
+## 背景音效（bgs）ID：只有这两个用渐强/渐弱
+const BGS_IDS := {"c4": "mainicon.bgs.c4", "c5_170": "mainicon.bgs.c5_170"}
 ## 一次性事件音效播放器
 var _event_players: Dictionary = {}
 ## 背景循环音效播放器（c4 / c5_170，高等级优先）
@@ -727,9 +729,9 @@ static func event_sound_id(kind: String) -> String:
 		"disperse":
 			return "mainicon.sound.disperse"
 		"c4":
-			return "mainicon.sound.c4"
-		"c5":
-			return "mainicon.sound.c5"
+			return "mainicon.bgs.c4"
+		"c5_170":
+			return "mainicon.bgs.c5_170"
 	return ""
 
 
@@ -754,33 +756,44 @@ func _update_background_sfx(kt: float, _cat: int) -> void:
 		var p := _bg_players[kind] as AudioStreamPlayer
 		if p == null or p.stream == null:
 			continue
-		var want := wants_c5_170 if kind == "c5" else wants_c4
+		var want := wants_c5_170 if kind == "c5_170" else wants_c4
+		var grad := _bgs_gradient(kind)
 		if want and not p.playing:
-			_fade_in(p)
+			_fade_in(p, grad)
 		elif not want and p.playing:
-			_fade_out_stop(p)
+			_fade_out_stop(p, grad)
 
 
 ## ⑫ 音效淡入淡出（用户 2026-11-06）：所有播放 0.5 s 淡入；循环停止 0.5 s 淡出
-const SFX_FADE_SECONDS := 0.5
+const SFX_FADE_SECONDS := 1.0
 const SFX_FADE_LOW_DB := -40.0
 
 
-func _fade_in(player: AudioStreamPlayer) -> void:
+func _bgs_gradient(kind: String) -> float:
+	var pack := GameSettings.icon_pack
+	var id: String = BGS_IDS.get(kind, "")
+	if id == "":
+		return 1.0
+	var e := IconPacks.effect_for(pack, id, 1e9)   # bgs 的 effect 不带 speed
+	var g := float(e.get("gradient", 1.0))
+	return g if g > 0.0 else 1.0
+
+
+func _fade_in(player: AudioStreamPlayer, gradient := SFX_FADE_SECONDS) -> void:
 	if player == null:
 		return
 	player.volume_db = SFX_FADE_LOW_DB
 	if not player.playing:
 		player.play()
 	var tw := player.create_tween()
-	tw.tween_property(player, "volume_db", 0.0, SFX_FADE_SECONDS)
+	tw.tween_property(player, "volume_db", 0.0, maxf(0.01, gradient))
 
 
-func _fade_out_stop(player: AudioStreamPlayer) -> void:
+func _fade_out_stop(player: AudioStreamPlayer, gradient := SFX_FADE_SECONDS) -> void:
 	if player == null or not player.playing:
 		return
 	var tw := player.create_tween()
-	tw.tween_property(player, "volume_db", SFX_FADE_LOW_DB, SFX_FADE_SECONDS)
+	tw.tween_property(player, "volume_db", SFX_FADE_LOW_DB, maxf(0.01, gradient))
 	tw.tween_callback(func() -> void:
 		player.stop()
 		player.volume_db = 0.0)
@@ -795,7 +808,7 @@ func _play_event_sfx(kind: String) -> void:
 	if now - int(_event_sfx_last_ms.get(kind, -100000)) < EVENT_SFX_COOLDOWN_MS:
 		return
 	_event_sfx_last_ms[kind] = now
-	_fade_in(player)
+	player.play()
 
 
 ## 台风「正常结束」（走完路径 / 减弱消散）。按 {1} 的规定：
@@ -879,7 +892,7 @@ func _setup_sfx() -> void:
 		_sfx_players.append(player)
 		player.stream = IconPacks.audio(GameSettings.icon_pack, GameSettings.landfall_sound_id(i))
 	# 背景循环音效：c4（进 C4 开始循环）/ c5_170（进 170+ 开始循环，高等级优先）
-	for kind in ["c4", "c5"]:
+	for kind in ["c4", "c5_170"]:
 		var bp := AudioStreamPlayer.new()
 		bp.bus = GameSettings.BUS_SFX
 		add_child(bp)
@@ -933,7 +946,7 @@ func _play_landfall_sfx(storm: Storm) -> void:
 	idx = clampi(idx, 0, LANDFALL_FILES.size() - 1)
 	var player := _sfx_players[idx]
 	if player.stream != null:
-		_fade_in(player)
+		player.play()
 	# 没有素材 → 静音（不打扰玩家）
 
 

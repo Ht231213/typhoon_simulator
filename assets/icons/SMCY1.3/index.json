@@ -94,16 +94,19 @@
    "mainicon.sound.disperse": "sound/mainicon_sound_disperse.ogg"
   },
   {
-   "mainicon.sound.c4": "sound/mainicon_sound_c4.ogg"
+   "mainicon.bgs.c4": "sound/mainicon_sound_c4.ogg"
   },
   {
-   "mainicon.sound.c5": "sound/mainicon_sound_c5_170.ogg"
+   "mainicon.bgs.c5_170": "sound/mainicon_sound_c5_170.ogg"
   },
   {
    "particle.eri": "particle/particle_eri.ogv"
   },
   {
    "particle.note_ts": "particle/particle_note_ts.ogv"
+  },
+  {
+   "music.simu.1": "test.ogg"
   }
  ],
  "effect": [
@@ -111,7 +114,17 @@
    "mainicon.icon.north.c5": {
 	"speed": 170,
 	"hue_shift": -50,
-	"gradient": 0.4
+	"gradient": 1.0
+   }
+  },
+  {
+   "mainicon.bgs.c4": {
+	"gradient": 1.0
+   }
+  },
+  {
+   "mainicon.bgs.c5_170": {
+	"gradient": 1.0
    }
   }
  ]

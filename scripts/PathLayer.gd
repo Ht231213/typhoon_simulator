@@ -104,6 +104,11 @@ func _ready() -> void:
 	_single_sprite.z_index = 2
 	_single_sprite.visible = false
 	add_child(_single_sprite)
+	# 用户 2026-11-06：特效/粒子放到**图标最上面**（图标视频 z=1、单图 z=2）
+	# ⚠ z_as_relative=false：用绝对 z，不受父节点/树序影响
+	for p in [_landfall_video, _fx_eri, _fx_note_ts]:
+		p.z_as_relative = false
+		p.z_index = 20
 	# 一次性特效：播完自己收掉
 	for p in [_landfall_video, _fx_eri, _fx_note_ts]:
 		p.finished.connect(func() -> void:
@@ -640,7 +645,7 @@ func _draw_procedural_icon(c: Color) -> void:
 		return
 	var d := icon_diameter_for(icon_diameter, live_intensity)
 	# 用户 2026-11-06：Advanced default 的圆盘缩小（0.5→0.41 直径），别盖住最内层风圈
-	var r := d * 0.41
+	var r := d * 0.27
 	draw_circle(live_position, r, Color(c, 0.85 * _icon_fade))
 	draw_arc(live_position, r, 0.0, TAU, 48, Color(1, 1, 1, 0.9 * _icon_fade), 2.0, true)
 	var label := _procedural_label()
