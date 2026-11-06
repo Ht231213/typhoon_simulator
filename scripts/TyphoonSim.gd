@@ -127,9 +127,10 @@ func _physics_process(delta: float) -> void:
 	storm.sst_here = minf(Const.SST_READ_CAP, field.sst_at(cell) + SimClock.seasonal_sst_amplitude())
 	storm.latitude = storm.current_lonlat().y
 
-	# ③ 登陆判定
+	# ③ 登陆判定（用户 2026-11-06：**变性中/变性后不算登陆** —— 温带气旋没有"登陆"概念）
 	var was_landfall := storm.landfall
-	storm.landfall = field.is_land_at_world(pos)
+	var phase_now := int(storm.phase)
+	storm.landfall = field.is_land_at_world(pos) and phase_now == int(Storm.Phase.TROPICAL)
 	if storm.landfall and not was_landfall:
 		_on_landfall(storm)
 	# ③.1 山区判定。参考里「陆地」和「山区」是分开两个判断，
@@ -837,6 +838,9 @@ func _maybe_auto_deploy() -> void:
 # ============================ 登陆 ============================
 
 func _on_landfall(storm: Storm) -> void:
+	# ⚠ 双保险：变性中/变性后**一律不判登陆**（含变性刚完成那一刻，不能补触发）
+	if int(storm.phase) != int(Storm.Phase.TROPICAL):
+		return
 	# 用户 2026-10-31：登陆特效/音效的**最低档是 TD（热带低压）**，L/扰动 不播
 	# （之前按"只要有音效就放"实现得太早，低档扰动登陆也会炸个特效）
 	# ⚠ 用户 2026-11-06：TD（22~33 kt）登陆**要有视觉特效**（无音效）。
