@@ -152,7 +152,8 @@ static func load_index(pack: String) -> Dictionary:
 					var sd: Dictionary = spec
 					var has_color := str(sd.get("color", "")).strip_edges() != ""
 					var has_bright := sd.has("brightness")
-					if not has_color and not has_bright:
+					var has_hue := sd.has("hue_shift")
+					if not has_color and not has_bright and not has_hue:
 						push_warning("[IconPacks] %s：effect %s 缺 color/brightness，已忽略" % [pack, str(eid)])
 						continue
 					if not effects.has(str(eid)):
@@ -161,6 +162,7 @@ static func load_index(pack: String) -> Dictionary:
 						"speed": float(sd.get("speed", -1.0)),
 						"color": str(sd.get("color", "")),
 						"brightness": float(sd.get("brightness", 0.0)),
+						"hue_shift": float(sd.get("hue_shift", 0.0)),
 						"gradient": maxf(0.0, float(sd.get("gradient", 0.0))),
 					})
 	var data := {"version": "%d~%d" % [vmin, vmax], "vmin": vmin, "vmax": vmax,

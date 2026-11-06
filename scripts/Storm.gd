@@ -86,7 +86,7 @@ func transition_progress() -> float:
 		Phase.EXTRATROPICAL:
 			return 1.0
 		_:
-			return clampf(transition_days / maxf(0.5, transition_target_days), 0.0, 1.0)
+			return clampf(transition_days / maxf(0.1, transition_target_days), 0.0, 1.0)
 
 var storm_name := ""
 ## 是否已「正式命名」（消耗掉命名表里的一个名字）。
@@ -299,7 +299,7 @@ func update_transition(days: float) -> void:
 					phase = Phase.TRANSITIONING
 					reverting = false
 					transition_days = 0.0
-					transition_target_days = maxf(0.5, Const.EXTRATROPICAL_TRANSITION_DAYS - 0.25 * bnorm)
+					transition_target_days = clampf(Const.EXTRATROPICAL_TRANSITION_DAYS - 0.08 * bnorm, 0.15, Const.EXTRATROPICAL_TRANSITION_DAYS)
 				elif b >= Const.TRANSITION_STRONG_B:
 					# 非锋面 ET / 冷心消散：环境极强但失败 → 仍显示 EX，快速消散
 					phase = Phase.EXTRATROPICAL
@@ -308,7 +308,7 @@ func update_transition(days: float) -> void:
 				else:
 					transition_cooldown = 0.5
 		Phase.TRANSITIONING:
-			var fwd := maxf(0.5, transition_target_days)
+			var fwd := maxf(0.1, transition_target_days)
 			if _tt_conditions_met():
 				# 只有苛刻的 TT 条件才允许回热带
 				if not reverting:
@@ -343,7 +343,7 @@ func update_transition(days: float) -> void:
 func _maybe_et_burst() -> void:
 	if _rng.randf() < 0.20:
 		wind_kt *= _rng.randf_range(1.05, 1.15)
-		et_burst_days = _rng.randf_range(0.25, 0.5)
+		et_burst_days = _rng.randf_range(0.05, 0.1)
 		transition_days = 0.0
 
 

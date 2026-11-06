@@ -409,13 +409,16 @@ static func icon_diameter_for(base: float, kt: float) -> float:
 var _tint_shown := Color.WHITE
 var _tint_target := Color.WHITE
 var _tint_gradient := 0.0
+## 色相旋转（度）当前/目标/过渡时长
+var _hue_shown := 0.0
+var _hue_target := 0.0
 
 
 func _target_tint() -> Dictionary:
 	var id := current_icon_id()
 	var e := IconPacksLoader.effect_for(icon_pack, id, live_intensity)
 	if e.is_empty():
-		return {"color": Color.WHITE, "gradient": 0.0}
+		return {"color": Color.WHITE, "hue": 0.0, "gradient": 0.0}
 	var tint := Color.WHITE
 	var color_str := str(e.get("color", "")).strip_edges()
 	var brightness := float(e.get("brightness", 0.0))
@@ -428,23 +431,29 @@ func _target_tint() -> Dictionary:
 	elif brightness != 0.0:
 		var k := clampf(1.0 + brightness / 100.0, 0.0, 2.0)
 		tint = Color(tint.r * k, tint.g * k, tint.b * k, tint.a)
-	return {"color": tint, "gradient": maxf(0.0, float(e.get("gradient", 0.0)))}
+	return {
+		"color": tint,
+		"hue": float(e.get("hue_shift", 0.0)),
+		"gradient": maxf(0.0, float(e.get("gradient", 0.0))),
+	}
 
 
 ## 重新计算目标色（图标切换时调用）
 func _reset_tint_target() -> void:
 	var t := _target_tint()
 	_tint_target = t["color"]
+	_hue_target = float(t.get("hue", 0.0))
 	_tint_gradient = float(t["gradient"])
 	if _tint_gradient <= 0.0:
 		_tint_shown = _tint_target
+		_hue_shown = _hue_target
 
 
 func _apply_video_tint() -> void:
-	var tint := _tint_shown
 	for p in [_icon_video, _icon_video_prev]:
 		if p != null and p.material is ShaderMaterial:
-			(p.material as ShaderMaterial).set_shader_parameter("tint", tint)
+			(p.material as ShaderMaterial).set_shader_parameter("tint", _tint_shown)
+			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown)
 
 
 func _apply_video_alpha() -> void:
@@ -491,14 +500,20 @@ func _hide_icon() -> void:
 func _process(delta: float) -> void:
 	_advance_video_fade(delta)
 	# effect 的 gradient：每帧向目标色线性逼近（用户 2026-11-06）
-	if not _tint_shown.is_equal_approx(_tint_target):
+	var tint_diff := not _tint_shown.is_equal_approx(_tint_target)
+	var hue_diff := absf(_hue_shown - _hue_target) > 0.01
+	if tint_diff or hue_diff:
 		if _tint_gradient > 0.0:
-			_tint_shown = _tint_shown.lerp(_tint_target, minf(1.0, delta / _tint_gradient))
-			# 足够接近就吸附，避免永远差一点点导致每帧都调 shader
+			var k := minf(1.0, delta / _tint_gradient)
+			_tint_shown = _tint_shown.lerp(_tint_target, k)
+			_hue_shown = lerpf(_hue_shown, _hue_target, k)
 			if _tint_shown.is_equal_approx(_tint_target):
 				_tint_shown = _tint_target
+			if absf(_hue_shown - _hue_target) <= 0.01:
+				_hue_shown = _hue_target
 		else:
 			_tint_shown = _tint_target
+			_hue_shown = _hue_target
 		_apply_video_tint()
 	if _icon_fading:
 		_icon_fade = maxf(0.0, _icon_fade - delta / ICON_FADE_SECONDS)

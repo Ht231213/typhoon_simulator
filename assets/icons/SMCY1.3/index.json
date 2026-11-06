@@ -109,9 +109,9 @@
  "effect": [
   {
    "mainicon.icon.north.c5": {
-    "speed": 170,
-    "color": "#4020F0",
-    "gradient": 0.4
+	"speed": 170,
+	"hue_shift": -50,
+	"gradient": 0.4
    }
   }
  ]
