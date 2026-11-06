@@ -37,3 +37,12 @@ _dev/
 # 容易误放进来、绝不该进版本库的东西
 *.exe
 .nomedia
+# 运行时生成（不进仓库）
+settings.cfg
+besttrack/
+BestTrack/
+saves/
+_tmp_export/
+# 测试/临时文件
+test.ogg
+test.ogg.import
