@@ -945,10 +945,11 @@ static func Storm_category_index(kt: float) -> int:
 func _play_landfall_sfx(storm: Storm) -> void:
 	# 用户 2026-10-31：登陆音效要和**登陆特效动画同时**开始（就在 _on_landfall 里紧接着
 	# spawn_landfall_effect 调用，同一 tick）。
-	# ⚠ 素材里没有 TD 专用音效（SMCY 只有 sound.landfall.TS / C1..C6）→ TD/扰动落到 TS 音效
+	# 用户 2026-11-07：**TD（热带低压）登陆必须静音**，不允许 fallback 到 TS 音效。
+	# 素材里没有 landfall.sound.d → 就是没有，直接不播（视觉特效照旧）。
 	var idx := Storm_category_index(storm.wind_kt)
 	if idx < 0:
-		idx = 0
+		return
 	idx = clampi(idx, 0, LANDFALL_FILES.size() - 1)
 	var player := _sfx_players[idx]
 	if player.stream != null:
