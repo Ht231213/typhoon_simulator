@@ -6,6 +6,17 @@ extends RefCounted
 ##   index.json + mainicon/ landfall/ particle/
 ## 游戏目录：打包版 = exe 所在目录；编辑器 = 工程根。
 ##
+## ⚠ 安卓（2026-11-06 移植）：
+##   APK 里没有「exe 同目录」这种可以浏览的外部文件夹 —— 安卓导出把 pck 内容
+##   平铺在 APK 的 `assets/` 下，运行时只能通过 `res://` 读。所以图标方案包在
+##   安卓上**必须打进 pck**，路径 = `res://assets/icons/...`，读法也不一样：
+##     · 导入资源（.ogv / .ogg / .png …）→ `ResourceLoader.load()`，
+##       .ogv → VideoStream、.ogg → AudioStream、.png → Texture2D
+##     · index.json 这类非导入文件 → `FileAccess.get_file_as_string()`
+##       （必须写在导出预设的 include_filter 里，否则不在 pck 里）
+##     · 目录列表 → `DirAccess.open("res://assets/icons")`（pck 内可列子目录）
+##   判断走哪条路：`OS.has_feature("android")`；桌面验证链路可用测试钩子 `force_res`。
+##
 ## index.json 最终格式：
 ##   {
 ##     "version": 1,                       // 1.2.0 起 1，每发一版 +1；不匹配 → 设置里方案名标黄
@@ -15,18 +26,39 @@ extends RefCounted
 ## 兼容：无 version/type → version=1、type=advanced；老 `objects` 复数当 `object`。
 ## `ext` / 对象级 type 一律忽略（已作废）。
 ##
-## ⚠ 不打包进 pck；文件直接读磁盘（外部文件没经过 import 流程，**不能用 load()**）：
+## ⚠ 桌面：方案包**不打包进 pck**，文件直接读磁盘（外部文件没经过 import 流程，**不能用 load()**）：
 ##   .ogv → VideoStreamTheora.new(); .file = 绝对路径
 ##   .ogg → AudioStreamOggVorbis.load_from_file()
 ##   .png → Image.load_from_file() → ImageTexture
+## 安卓：一律走 res:// 资源加载（见上方文件头说明）。
 
 const EXT_DIR := "assets/icons"
+## 安卓 pck 内的方案包根目录（res:// 前缀 → 走资源加载链路）
+const EXT_RES_DIR := "res://" + EXT_DIR
 ## 游戏支持的 index.json 版本（不匹配只标黄，不报错）
 const SUPPORTED_VERSION := 1
+
+## 测试钩子（仅 _dev / 调试用）：桌面 / 编辑器上强制走 res:// 加载链路，
+## 用来验证安卓分支（安卓上 `OS.has_feature("android")` 本来就为 true）。
+## 正式运行不要设它。
+static var force_res := false
+
+
+## 是否使用 pck 内的 res:// 资源路径（安卓 / 测试钩子）
+static func uses_res() -> bool:
+	return force_res or OS.has_feature("android")
+
+
+## 这个路径是不是 pck 内资源路径（res:// 前缀），用来和「桌面外部绝对路径」区分
+static func is_res_path(p: String) -> bool:
+	return p.begins_with("res://")
+
 
 # ------------------------- 扫描 -------------------------
 
 static func pack_dir() -> String:
+	if uses_res():
+		return EXT_RES_DIR
 	if OS.has_feature("editor"):
 		return ProjectSettings.globalize_path("res://").path_join(EXT_DIR)
 	return OS.get_executable_path().get_base_dir().path_join(EXT_DIR)
@@ -69,11 +101,15 @@ static func load_index(pack: String) -> Dictionary:
 	var idx_path := root.path_join("index.json")
 	if not FileAccess.file_exists(idx_path):
 		return empty
-	var stamp := "%d|%d" % [FileAccess.get_modified_time(idx_path), FileAccess.get_file_as_string(idx_path).length()]
+	var text := FileAccess.get_file_as_string(idx_path)
+	# pck 内文件没有可靠的 mtime（安卓整包只读，内容也不会变）→ 只用长度做缓存戳
+	var mtime := 0
+	if not is_res_path(idx_path):
+		mtime = FileAccess.get_modified_time(idx_path)
+	var stamp := "%d|%d" % [mtime, text.length()]
 	var cached: Dictionary = _index_cache.get(pack, {})
 	if cached.get("stamp", "") == stamp:
 		return cached.get("data", empty)
-	var text := FileAccess.get_file_as_string(idx_path)
 	var parsed: Variant = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		push_warning("[IconPacks] %s/index.json 解析失败" % pack)
@@ -164,44 +200,74 @@ static func first_id(pack: String) -> String:
 	return ""
 
 
-## 包内相对路径 → 绝对路径（不存在返回 ""）
+## 包内相对路径 → 可加载路径（不存在返回 ""）。
+## 桌面 = 外部绝对路径；安卓 = pck 内的 res:// 路径。
 static func path_of(pack: String, id: String) -> String:
 	var e := entry(pack, id)
 	if e.is_empty():
 		return ""
 	var p := pack_root(pack).path_join(str(e["path"]))
-	return p if FileAccess.file_exists(p) else ""
+	return p if _exists(p) else ""
 
 
-## 取视频（外部文件：VideoStreamTheora.file 直接指磁盘）
+## 文件是否存在。
+## ⚠ pck 内的导入资源（.ogg / .png …）**源文件本身可能不在 pck 里**（只有 .import
+##   指向的导入产物），此时 `FileAccess.file_exists("res://x.ogg")` 为 false，
+##   但 `ResourceLoader.load("res://x.ogg")` 能成功 → 所以 res:// 用 ResourceLoader 判定。
+static func _exists(p: String) -> bool:
+	if is_res_path(p):
+		return ResourceLoader.exists(p) or FileAccess.file_exists(p)
+	return FileAccess.file_exists(p)
+
+
+## 取视频。
+## 桌面（外部磁盘 .ogv）：VideoStreamTheora.file 直接指磁盘
+## 安卓（pck 内 .ogv）：ResourceLoader.load → VideoStreamTheora
 static func video(pack: String, id: String) -> VideoStream:
-	var abs := path_of(pack, id)
-	if abs == "":
+	var p := path_of(pack, id)
+	if p == "":
+		return null
+	if is_res_path(p):
+		var res: Variant = ResourceLoader.load(p)
+		if res is VideoStream:
+			return res
 		return null
 	var v := VideoStreamTheora.new()
-	v.file = abs
+	v.file = p
 	return v
 
 
-## 取图片（单图方案）
+## 取图片（单图方案）。
+## 桌面：Image.load_from_file；安卓：ResourceLoader.load → Texture2D
 static func image(pack: String, id: String) -> Texture2D:
-	var abs := path_of(pack, id)
-	if abs == "":
+	var p := path_of(pack, id)
+	if p == "":
+		return null
+	if is_res_path(p):
+		var res: Variant = ResourceLoader.load(p)
+		if res is Texture2D:
+			return res
 		return null
 	var img := Image.new()
-	if img.load(abs) != OK:
+	if img.load(p) != OK:
 		return null
 	return ImageTexture.create_from_image(img)
 
 
-## 取音频（外部文件：load_from_file）
+## 取音频。
+## 桌面（外部磁盘）：load_from_file；安卓（pck 内）：ResourceLoader.load → AudioStream
 static func audio(pack: String, id: String) -> AudioStream:
-	var abs := path_of(pack, id)
-	if abs == "":
+	var p := path_of(pack, id)
+	if p == "":
 		return null
-	var ext := abs.get_extension().to_lower()
+	if is_res_path(p):
+		var res: Variant = ResourceLoader.load(p)
+		if res is AudioStream:
+			return res
+		return null
+	var ext := p.get_extension().to_lower()
 	if ext == "ogg":
-		return AudioStreamOggVorbis.load_from_file(abs)
+		return AudioStreamOggVorbis.load_from_file(p)
 	if ext == "wav":
-		return AudioStreamWAV.load_from_file(abs)
+		return AudioStreamWAV.load_from_file(p)
 	return null

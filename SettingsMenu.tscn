@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/SettingsMenu.gd" id="1_settings"]
 
-[node name="SettingsMenu" type="Control"]
+[node name="SettingsMenu" type="Control" groups=["settings_overlay"]]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -29,42 +29,48 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="Box" type="PanelContainer" parent="Margin"]
+[node name="Frame" type="HBoxContainer" parent="Margin"]
 layout_mode = 2
+alignment = 1
 
-[node name="Rows" type="VBoxContainer" parent="Margin/Box"]
+[node name="Box" type="PanelContainer" parent="Margin/Frame"]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="Rows" type="VBoxContainer" parent="Margin/Frame/Box"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Heading" type="Label" parent="Margin/Box/Rows"]
+[node name="Heading" type="Label" parent="Margin/Frame/Box/Rows"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "设置"
 horizontal_alignment = 1
 
-[node name="Sep0" type="HSeparator" parent="Margin/Box/Rows"]
+[node name="Sep0" type="HSeparator" parent="Margin/Frame/Box/Rows"]
 layout_mode = 2
 
-[node name="TabBar" type="TabBar" parent="Margin/Box/Rows"]
+[node name="TabBar" type="TabBar" parent="Margin/Frame/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
 theme_override_font_sizes/font_size = 20
 
-[node name="Pages" type="TabContainer" parent="Margin/Box/Rows"]
+[node name="Pages" type="TabContainer" parent="Margin/Frame/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_font_sizes/font_size = 18
 
-[node name="视频" type="VBoxContainer" parent="Margin/Box/Rows/Pages"]
+[node name="视频" type="VBoxContainer" parent="Margin/Frame/Box/Rows/Pages"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Pad1" type="Control" parent="Margin/Box/Rows/Pages/视频"]
+[node name="Pad1" type="Control" parent="Margin/Frame/Box/Rows/Pages/视频"]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
-[node name="FullscreenCheck" type="CheckBox" parent="Margin/Box/Rows/Pages/视频"]
+[node name="FullscreenCheck" type="CheckBox" parent="Margin/Frame/Box/Rows/Pages/视频"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
@@ -73,28 +79,28 @@ theme_override_font_sizes/font_size = 22
 tooltip_text = "切换全屏 / 窗口模式"
 text = "全屏显示"
 
-[node name="音频" type="VBoxContainer" parent="Margin/Box/Rows/Pages"]
+[node name="音频" type="VBoxContainer" parent="Margin/Frame/Box/Rows/Pages"]
 layout_mode = 2
 theme_override_constants/separation = 18
 
-[node name="Pad2" type="Control" parent="Margin/Box/Rows/Pages/音频"]
+[node name="Pad2" type="Control" parent="Margin/Frame/Box/Rows/Pages/音频"]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
-[node name="MusicRow" type="HBoxContainer" parent="Margin/Box/Rows/Pages/音频"]
+[node name="MusicRow" type="HBoxContainer" parent="Margin/Frame/Box/Rows/Pages/音频"]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="MusicLabel" type="Label" parent="Margin/Box/Rows/Pages/音频/MusicRow"]
+[node name="MusicLabel" type="Label" parent="Margin/Frame/Box/Rows/Pages/音频/MusicRow"]
 custom_minimum_size = Vector2(130, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
 text = "音乐音量"
 
-[node name="MusicSlider" type="HSlider" parent="Margin/Box/Rows/Pages/音频/MusicRow"]
+[node name="MusicSlider" type="HSlider" parent="Margin/Frame/Box/Rows/Pages/音频/MusicRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 36)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -103,7 +109,7 @@ step = 1.0
 value = 80.0
 tooltip_text = "背景音乐（主菜单 BGM、模拟内 BGM）"
 
-[node name="MusicValue" type="Label" parent="Margin/Box/Rows/Pages/音频/MusicRow"]
+[node name="MusicValue" type="Label" parent="Margin/Frame/Box/Rows/Pages/音频/MusicRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(70, 0)
 layout_mode = 2
@@ -111,19 +117,19 @@ theme_override_font_sizes/font_size = 19
 text = "80%"
 horizontal_alignment = 2
 
-[node name="SfxRow" type="HBoxContainer" parent="Margin/Box/Rows/Pages/音频"]
+[node name="SfxRow" type="HBoxContainer" parent="Margin/Frame/Box/Rows/Pages/音频"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="SfxLabel" type="Label" parent="Margin/Box/Rows/Pages/音频/SfxRow"]
+[node name="SfxLabel" type="Label" parent="Margin/Frame/Box/Rows/Pages/音频/SfxRow"]
 custom_minimum_size = Vector2(130, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
 text = "音效音量"
 
-[node name="SfxSlider" type="HSlider" parent="Margin/Box/Rows/Pages/音频/SfxRow"]
+[node name="SfxSlider" type="HSlider" parent="Margin/Frame/Box/Rows/Pages/音频/SfxRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 36)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -132,7 +138,7 @@ step = 1.0
 value = 100.0
 tooltip_text = "登陆音效、台风音效等"
 
-[node name="SfxValue" type="Label" parent="Margin/Box/Rows/Pages/音频/SfxRow"]
+[node name="SfxValue" type="Label" parent="Margin/Frame/Box/Rows/Pages/音频/SfxRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(70, 0)
 layout_mode = 2
@@ -140,19 +146,19 @@ theme_override_font_sizes/font_size = 19
 text = "100%"
 horizontal_alignment = 2
 
-[node name="Sep1" type="HSeparator" parent="Margin/Box/Rows"]
+[node name="Sep1" type="HSeparator" parent="Margin/Frame/Box/Rows"]
 layout_mode = 2
 
-[node name="HintLabel" type="Label" parent="Margin/Box/Rows"]
+[node name="HintLabel" type="Label" parent="Margin/Frame/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = ""
 autowrap_mode = 2
 
-[node name="BackButton" type="Button" parent="Margin/Box/Rows"]
+[node name="BackButton" type="Button" parent="Margin/Frame/Box/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 52)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 tooltip_text = "返回"

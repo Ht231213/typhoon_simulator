@@ -29,6 +29,9 @@ const HEADER_EXPANDED := "▼ %s"
 const HEADER_COLLAPSED := "▶ %s"
 ## 默认导出目录的文件夹名，放在「游戏根」下（导出后就是 exe 旁边）
 const BEST_TRACK_DIR_NAME := "BestTrack"
+## 安卓默认导出目录：APK 内 `res://` 只读、也没有可写的「exe 同目录」，
+## 唯一可写的是 user://（应用私有目录）。必须和 `BestTrack.gd` 的 default_export_dir() 保持一致。
+const ANDROID_BEST_TRACK_DIR := "user://BestTrack"
 ## 行内字号。`.tscn` 里已经写了一遍，这里只用来补 SpinBox：
 ## ⚠ SpinBox 的数字是它**内部自己创建的 LineEdit** 画的，场景里的
 ##   `theme_override_font_sizes` 管不到，只能在代码里给那个 LineEdit 补一次，
@@ -211,17 +214,32 @@ func refresh_from_store() -> void:
 
 
 ## 默认导出目录 = <游戏根>/BestTrack。
-## ⚠ 「游戏根」在两种运行方式下不是同一个地方：
+## ⚠ 「游戏根」在不同运行方式下不是同一个地方：
 ##   · 编辑器 / 直接跑工程：`res://` 就是工程根，可写
 ##   · 导出成 exe：`res://` 在 PCK 里**只读**，必须写到 exe 所在目录
-##   `OS.has_feature("template")` 就是「我正在导出模板里跑」。
+##     `OS.has_feature("template")` 就是「我正在导出模板里跑」。
+##   · 安卓 APK（2026-11-06 移植）：`res://` 只读、没有可写的 exe 目录 →
+##     只能写 user://（应用私有目录），默认 `user://BestTrack`
 func default_best_track_dir() -> String:
+	if OS.has_feature("android"):
+		return ANDROID_BEST_TRACK_DIR
 	var base := ""
 	if OS.has_feature("template"):
 		base = OS.get_executable_path().get_base_dir()
 	else:
 		base = ProjectSettings.globalize_path("res://")
 	return base.path_join(BEST_TRACK_DIR_NAME)
+
+
+## 给 UI / 日志显示用的导出目录。
+## 安卓的默认目录是 `user://BestTrack`（虚拟路径），显示时转成
+## `ProjectSettings.globalize_path()` 的实际路径（= 应用私有目录），不然玩家看不懂。
+## 桌面 / 编辑器本来就是真实绝对路径，原样返回。
+func display_best_track_dir() -> String:
+	var dir := default_best_track_dir()
+	if dir.begins_with("user://") or dir.begins_with("res://"):
+		return ProjectSettings.globalize_path(dir)
+	return dir
 
 
 ## 当前上下文是否「强制记录最佳路径」（= 进游戏后 + 风季）。

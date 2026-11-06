@@ -46,13 +46,13 @@ vertical_alignment = 1
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.2591146
+anchor_left = 0.0
 anchor_top = 0.4537037
-anchor_right = 0.58984375
+anchor_right = 0.0
 anchor_bottom = 0.5462963
-offset_left = -222.5
+offset_left = 109.1667
 offset_top = -111.0
-offset_right = -222.5
+offset_right = 532.5
 offset_bottom = -111.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -65,13 +65,13 @@ text = "模拟单台"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.2591146
+anchor_left = 0.0
 anchor_top = 0.5462963
-anchor_right = 0.58984375
+anchor_right = 0.0
 anchor_bottom = 0.6388889
-offset_left = -238.5
+offset_left = 93.1667
 offset_top = -103.0
-offset_right = -238.5
+offset_right = 516.5
 offset_bottom = -103.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -84,13 +84,13 @@ text = "ACE 存档"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.2591146
+anchor_left = 0.0
 anchor_top = 0.5462963
-anchor_right = 0.58984375
+anchor_right = 0.0
 anchor_bottom = 0.6388889
-offset_left = -318.5
+offset_left = 13.1667
 offset_top = 126.00003
-offset_right = -318.5
+offset_right = 436.5
 offset_bottom = 126.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -103,13 +103,13 @@ text = "退出"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.2591146
+anchor_left = 0.0
 anchor_top = 0.5462963
-anchor_right = 0.58984375
+anchor_right = 0.0
 anchor_bottom = 0.6388889
-offset_left = -262.5
+offset_left = 69.1667
 offset_top = -27.99997
-offset_right = -262.5
+offset_right = 492.5
 offset_bottom = -28.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -118,7 +118,7 @@ size_flags_vertical = 4
 theme_override_font_sizes/font_size = 32
 text = "设置"
 
-[node name="SettingsPanel" type="Control" parent="." unique_id=1507461435]
+[node name="SettingsPanel" type="Control" parent="." unique_id=1507461435 groups=["settings_overlay"]]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -150,56 +150,61 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="Box" type="PanelContainer" parent="SettingsPanel/Margin" unique_id=1082501325]
+[node name="Frame" type="HBoxContainer" parent="SettingsPanel/Margin" unique_id=1600897565]
 layout_mode = 2
+alignment = 1
 
-[node name="Pad" type="MarginContainer" parent="SettingsPanel/Margin/Box" unique_id=1082501326]
+[node name="Box" type="PanelContainer" parent="SettingsPanel/Margin/Frame" unique_id=1082501325]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="Pad" type="MarginContainer" parent="SettingsPanel/Margin/Frame/Box" unique_id=1082501326]
 layout_mode = 2
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_top = 18
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 18
 
-[node name="Rows" type="VBoxContainer" parent="SettingsPanel/Margin/Box/Pad" unique_id=1325766874]
+[node name="Rows" type="VBoxContainer" parent="SettingsPanel/Margin/Frame/Box/Pad" unique_id=1325766874]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Heading" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=2129749799]
+[node name="Heading" type="Label" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows" unique_id=2129749799]
 layout_mode = 2
 theme_override_font_sizes/font_size = 34
 text = "模拟设置"
 horizontal_alignment = 1
 
-[node name="Sep0" type="HSeparator" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=295155451]
+[node name="Sep0" type="HSeparator" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows" unique_id=295155451]
 layout_mode = 2
 
-[node name="Columns" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=295155452]
+[node name="Columns" type="HBoxContainer" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows" unique_id=295155452]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 40
 
-[node name="Left" type="VBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns" unique_id=295155453]
+[node name="Left" type="VBoxContainer" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns" unique_id=295155453]
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 theme_override_constants/separation = 18
 
-[node name="ModeRow" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left" unique_id=1606306349]
+[node name="ModeRow" type="HBoxContainer" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns/Left" unique_id=1606306349]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="ModeLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=706571564]
+[node name="ModeLabel" type="Label" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=706571564]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "模拟模式"
 
-[node name="ModeOption" type="OptionButton" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=271761793]
+[node name="ModeOption" type="OptionButton" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=271761793]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 22
 
-[node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left" unique_id=1914594703]
+[node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns/Left" unique_id=1914594703]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
@@ -207,31 +212,31 @@ theme_override_constants/icon_max_width = 64
 theme_override_font_sizes/font_size = 26
 text = "风季模式"
 
-[node name="Right" type="MarginContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns" unique_id=1597845020]
+[node name="Right" type="MarginContainer" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns" unique_id=1597845020]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/margin_top = 8
 
-[node name="DescLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right" unique_id=1597845019]
+[node name="DescLabel" type="Label" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Columns/Right" unique_id=1597845019]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "…"
 autowrap_mode = 2
 
-[node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=323294088]
+[node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows" unique_id=323294088]
 layout_mode = 2
 theme_override_constants/separation = 28
 alignment = 1
 
-[node name="ConfirmButton" type="Button" parent="SettingsPanel/Margin/Box/Pad/Rows/Buttons" unique_id=95091535]
+[node name="ConfirmButton" type="Button" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Buttons" unique_id=95091535]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(180, 54)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "确认"
 
-[node name="CancelButton" type="Button" parent="SettingsPanel/Margin/Box/Pad/Rows/Buttons" unique_id=1844881377]
+[node name="CancelButton" type="Button" parent="SettingsPanel/Margin/Frame/Box/Pad/Rows/Buttons" unique_id=1844881377]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(180, 54)
 layout_mode = 2

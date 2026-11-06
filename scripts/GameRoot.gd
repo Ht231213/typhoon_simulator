@@ -18,6 +18,8 @@ const GRID_OVERLAY_PATH := "MapLayer/GridOverlay"
 @onready var sim: TyphoonSim = %TyphoonSim
 @onready var sidebar: PanelContainer = %Sidebar
 @onready var results_panel: Control = %ResultsPanel
+## 安全区外框（安卓刘海/手势条不挡右侧栏；桌面 inset 为 0，布局与以前一致）
+@onready var safe_area: MarginContainer = $SafeArea
 
 ## 调试面板（F6）。运行到 _ready 时才会被实例化出来。
 var debug_panel: Node = null
@@ -30,6 +32,10 @@ var _scale := 1.0
 func _ready() -> void:
 	# ESC 全暂停（get_tree().paused）时界面仍要能操作，所以本场景常驻处理
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	# 安卓安全区：整块游戏区（地图 + 右侧栏）避开刘海/挖孔/手势条。
+	# 桌面 inset 全 0 → 外框 margin 为 0，和改动前的布局逐像素一致。
+	AndroidCompat.register_safe_area(safe_area)
 
 	# ⚠ 子节点会**继承** ALWAYS —— 那样 ESC 全暂停对 TyphoonSim / PathEditor 就无效了
 	#    （这就是「ESC 暂停菜单不暂停模拟」的根因）。把该被暂停的两项显式设回 PAUSABLE。

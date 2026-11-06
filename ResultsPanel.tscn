@@ -59,6 +59,7 @@ layout_mode = 2
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
+theme_override_font_sizes/font_size = 20
 
 [node name="SaveLabel" type="Label" parent="Box/Rows"]
 unique_name_in_owner = true
@@ -74,14 +75,14 @@ theme_override_constants/separation = 24
 
 [node name="AgainButton" type="Button" parent="Box/Rows/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 42)
+custom_minimum_size = Vector2(180, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 20
 text = "再跑一局"
 
 [node name="MenuButton" type="Button" parent="Box/Rows/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 42)
+custom_minimum_size = Vector2(180, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 20
 text = "回主菜单"

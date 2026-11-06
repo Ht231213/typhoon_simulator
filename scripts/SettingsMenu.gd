@@ -16,6 +16,11 @@ extends Control
 @onready var tab_bar: TabBar = %TabBar
 @onready var pages: TabContainer = %Pages
 
+## 外框（安全区）/ 限宽行 / 面板本体：安卓安全区 + 宽屏居中用
+@onready var margin: MarginContainer = $Margin
+@onready var frame: HBoxContainer = $Margin/Frame
+@onready var panel_box: PanelContainer = $Margin/Frame/Box
+
 @onready var fullscreen_check: CheckBox = %FullscreenCheck
 
 @onready var music_slider: HSlider = %MusicSlider
@@ -25,6 +30,12 @@ extends Control
 
 @onready var back_button: Button = %BackButton
 @onready var hint_label: Label = %HintLabel
+
+## 宽屏（aspect=expand 后逻辑宽度会 >1280）时面板的最大宽度。
+## 桌面 16:9 时 1280 < 可用宽度 → 行为不变（全宽）；手机 20:9 时居中限宽，控件不会被拉得过宽。
+const MAX_PANEL_WIDTH := 1280.0
+## 「视频」页的标题（安卓上整页隐藏：全屏由系统决定，没有窗口模式）
+const VIDEO_TAB_TITLE := "视频"
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
 ## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
@@ -44,6 +55,15 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 
+	# ── 安卓触摸适配（桌面 inset 全 0，行为与之前一致）──
+	# ① 外框安全区：刘海/挖孔/圆角不挡「返回」按钮和选项卡
+	AndroidCompat.register_safe_area(margin)
+	# ② 宽屏限宽居中：窗口/旋转变化（含安全区 margin 变化）时重算
+	frame.resized.connect(_update_frame_width)
+	get_viewport().size_changed.connect(_update_frame_width)
+	_style_touch_sliders()
+	_update_frame_width()
+
 	_build_preset_page()
 	_build_sim_page()
 
@@ -53,6 +73,8 @@ func _ready() -> void:
 	for i in pages.get_tab_count():
 		tab_bar.set_tab_title(i, pages.get_tab_title(i))
 	tab_bar.tab_changed.connect(_on_tab_changed)
+	# 平台相关页的隐藏要在标签同步之后再套一次（TabBar 的 tab 数量刚被重排）
+	_apply_platform(AndroidCompat.is_android())
 
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
 	music_slider.value_changed.connect(_on_music_changed)
@@ -92,12 +114,88 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 	row.add_child(lbl)
 	var opt := OptionButton.new()
 	# 用户 2026-10-31：控件不用占满横向，200 px 足够（和最佳路径的选择框一致）
-	opt.custom_minimum_size = Vector2(200, 44)
+	# 安卓触摸：高度 48（≥44），别用 44 卡线
+	opt.custom_minimum_size = Vector2(200, 48)
 	opt.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	opt.add_theme_font_size_override("font_size", 19)
 	opt.tooltip_text = tooltip
 	row.add_child(opt)
 	return opt
+
+
+# ============================ 安卓平台适配（安全区 / 宽屏 / 触摸） ============================
+
+## 平台相关可见性：安卓没有「窗口模式」，全屏由系统决定 →
+## 藏掉「全屏显示」行和整个「视频」页；桌面保持原样。
+## 参数注入口是为了 headless 自检能在桌面模拟安卓分支。
+func _apply_platform(android: bool) -> void:
+	if fullscreen_check != null:
+		fullscreen_check.visible = not android
+	var video_index := -1
+	for i in pages.get_tab_count():
+		if pages.get_tab_title(i) == VIDEO_TAB_TITLE:
+			video_index = i
+			break
+	if video_index < 0:
+		return
+	pages.set_tab_hidden(video_index, android)
+	if tab_bar != null and video_index < tab_bar.tab_count:
+		tab_bar.set_tab_hidden(video_index, android)
+
+
+## 宽屏（aspect=expand 后逻辑宽度会 >1280）把面板限宽居中。
+## 1280 是设计分辨率：桌面 16:9 时可用宽度 1260 < 1280 → 仍然全宽，和以前一模一样。
+func _update_frame_width() -> void:
+	if frame == null or panel_box == null:
+		return
+	var avail := frame.size.x
+	if avail <= 0.0:
+		# _ready 第一帧 frame 还没排版，用视口尺寸兜底（安全区 margin 之后由 resized 再算一次）
+		avail = get_viewport_rect().size.x \
+			- float(margin.get_theme_constant("margin_left")) \
+			- float(margin.get_theme_constant("margin_right"))
+	panel_box.custom_minimum_size.x = clampf(avail, 0.0, MAX_PANEL_WIDTH)
+
+
+## 触摸滑块加粗：默认主题的抓手指只有 ~14 px，手指抓不住。
+## 换 32 px 圆抓手 + 加粗轨道（桌面观感同样更好，拖动行为不变）。
+func _style_touch_sliders() -> void:
+	for slider in [music_slider, sfx_slider]:
+		_style_touch_slider(slider)
+
+
+func _style_touch_slider(slider: HSlider) -> void:
+	if slider == null:
+		return
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.30, 0.36, 0.48, 0.9)
+	track.set_corner_radius_all(4)
+	track.content_margin_top = 8.0
+	track.content_margin_bottom = 8.0
+	slider.add_theme_stylebox_override("slider", track)
+	var filled := StyleBoxFlat.new()
+	filled.bg_color = Color(0.45, 0.72, 1.0, 0.95)
+	filled.set_corner_radius_all(4)
+	filled.content_margin_top = 8.0
+	filled.content_margin_bottom = 8.0
+	slider.add_theme_stylebox_override("grabber_area", filled)
+	slider.add_theme_stylebox_override("grabber_area_highlight", filled)
+	var thumb := _circle_texture(32, Color(0.93, 0.96, 1.0))
+	for icon_name in ["grabber", "grabber_highlight", "grabber_disabled"]:
+		slider.add_theme_icon_override(icon_name, thumb)
+
+
+## 生成一个抗锯齿圆形图标（用来替换滑块的抓手贴图，避免额外素材文件）
+func _circle_texture(diameter: int, color: Color) -> ImageTexture:
+	var img := Image.create(diameter, diameter, false, Image.FORMAT_RGBA8)
+	var radius := (diameter - 1) * 0.5
+	var center := Vector2(radius, radius)
+	for y in diameter:
+		for x in diameter:
+			var d := Vector2(float(x), float(y)).distance_to(center)
+			var a := clampf(radius + 0.5 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(color.r, color.g, color.b, a))
+	return ImageTexture.create_from_image(img)
 
 
 ## 预设页：**方案**（一个 zip = 图标 + 登陆特效 + 登陆音效）+ 单位
@@ -193,6 +291,8 @@ func open() -> void:
 	# ⚠ 这里**不再**写任何「已保存到 …」之类的样板提示文字（用户要求去掉）。
 	hint_label.text = ""
 	visible = true
+	# 打开时（尤其从暂停层里打开）再算一次限宽，避免隐藏期间窗口/安全区变化没跟上
+	_update_frame_width()
 
 
 func _refresh_volume_labels() -> void:

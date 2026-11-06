@@ -33,7 +33,7 @@ theme_override_constants/separation = 10
 
 [node name="Header" type="Button" parent="Frame/FrameMargin/FrameRows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 tooltip_text = "点击折叠 / 展开模拟设置"
@@ -63,14 +63,14 @@ text = "模拟模式"
 
 [node name="ModeOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/ModeRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
 tooltip_text = "手动：自己在地图上画路径；自动：沿内置路径生成。进游戏后不可改。"
 
 [node name="SeasonCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 19
@@ -91,7 +91,7 @@ text = "平均海温"
 
 [node name="MeanSstSpin" type="SpinBox" parent="Frame/FrameMargin/FrameRows/Content/MeanSstRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 tooltip_text = "所有海区统一的基准海温（℃）。默认 30.0 = 不偏移；调高 = 整体更暖、台风更容易增强。"
 min_value = 20.0
@@ -115,7 +115,7 @@ text = "季节海温增幅"
 
 [node name="SeasonalAmpSpin" type="SpinBox" parent="Frame/FrameMargin/FrameRows/Content/SeasonalAmpRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 tooltip_text = "海温的季节变化幅度（℃）。8 月最暖、2 月最冷。默认 1.5。"
 min_value = 0.0
@@ -130,7 +130,7 @@ layout_mode = 2
 
 [node name="RecordDisturbancesCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 19
@@ -147,7 +147,7 @@ theme_override_constants/separation = 10
 
 [node name="BestTrackCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 19
@@ -168,7 +168,7 @@ text = "导出方式"
 
 [node name="BestTrackFormatOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackFormatRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 tooltip_text = "导出的文件格式：NOAA 是 IBTrACS（国际通用），CMA 是中国气象局格式。两种格式共用同一份轨迹数据。"

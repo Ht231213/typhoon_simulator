@@ -8,7 +8,9 @@ extends Node
 # 这些值**从配置文件读**（`config/simulation.cfg`），不在代码里写死。
 #
 #   ① 打包在游戏里的默认值：`res://config/simulation.cfg`
-#   ② 导出后想调参：把同名文件放到 **exe 同目录** 下的 `simulation.cfg`，会覆盖 ①
+#   ② 导出后想调参（**仅桌面**）：把同名文件放到 **exe 同目录** 下的 `simulation.cfg`，会覆盖 ①
+#   ③ 安卓（2026-11-06 移植）：APK 里没有「exe 同目录」这种可写/可浏览的位置，
+#      OS.get_executable_path() 也没有意义 → 完全跳过 ②，只用 ① 的内置文件。
 #
 # 和玩家设置（`user://settings.cfg`：音量 / 全屏）是**完全分开**的两套东西：
 # 那份是运行时由玩家改的，这份是设计参数、随游戏发布。
@@ -56,15 +58,24 @@ func _ready() -> void:
 	_sync_tick_rate()
 
 
+## exe 同目录覆盖文件的路径。
+## ⚠ 安卓：APK 没有「exe 同目录」这个概念，`OS.get_executable_path()` 也拿不到
+##   可以放覆盖文件的目录 → 直接返回 ""（调用方当作「没有覆盖文件」）。
+func _exe_override_path(file_name: String) -> String:
+	if OS.has_feature("android"):
+		return ""
+	return OS.get_executable_path().get_base_dir().path_join(file_name)
+
+
 ## 读 `config/sst.txt` 里的 192 个基础海温值。
-## 支持 exe 同目录覆盖（导出后想换海温，放个同名文件到 exe 旁边就行）。
+## 支持 exe 同目录覆盖（导出后想换海温，放个同名文件到 exe 旁边就行；安卓不支持）。
 ##
 ## ⚠ 和 `_read_sim_cfg` 一样要**手动剥 BOM**：用户拿记事本或 PowerShell 存过的
 ##   文件很容易带 UTF-8 BOM，直接按字节解析会把第一个数字读坏。
 func _load_sst_data() -> void:
 	var path := SST_DATA_RES_PATH
-	var over := OS.get_executable_path().get_base_dir().path_join(SST_DATA_EXE_NAME)
-	if FileAccess.file_exists(over):
+	var over := _exe_override_path(SST_DATA_EXE_NAME)
+	if over != "" and FileAccess.file_exists(over):
 		path = over
 	sst_data_source = path
 
@@ -124,12 +135,13 @@ func _strip_bom(text: String) -> String:
 
 
 ## 读 `config/simulation.cfg`，没有就用代码里的默认值。
-## exe 同目录下的 `simulation.cfg` 优先，方便导出后调参。
+## 桌面：exe 同目录下的 `simulation.cfg` 优先，方便导出后调参。
+## 安卓：没有「exe 同目录」覆盖，只用 `res://config/simulation.cfg`（见 _exe_override_path）。
 func _load_sim_config() -> void:
 	var base := _read_sim_cfg(SIM_CONFIG_RES_PATH)
 	var base_ok := base.has_section("timing")
 
-	var over_path := OS.get_executable_path().get_base_dir().path_join(SIM_CONFIG_EXE_NAME)
+	var over_path := _exe_override_path(SIM_CONFIG_EXE_NAME)
 	var over := _read_sim_cfg(over_path)
 	var over_ok := over.has_section("timing")
 

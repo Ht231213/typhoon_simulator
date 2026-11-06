@@ -11,13 +11,15 @@ config_version=5
 [application]
 
 config/name="Typhoon"
-config/version="1.2.0-beta.3"
+config/version="1.2.0-android.2"
 run/main_scene="res://TitleScreen.tscn"
-config/features=PackedStringArray("4.7", "GL Compatibility")
+config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
+config/quit_on_go_back=false
 
 [autoload]
 
+AndroidCompat="*res://scripts/android/AndroidCompat.gd"
 Const="*res://scripts/Constants.gd"
 Game="*res://scripts/Game.gd"
 GameSettings="*res://scripts/GameSettings.gd"
@@ -29,12 +31,23 @@ MusicManager="*res://scripts/MusicManager.gd"
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [gui]
 
 theme/default_theme_scale=1.31
 theme/custom="res://assets/theme/main_theme.tres"
 theme/custom_font="res://assets/fonts/NotoSansSC-Regular.otf"
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
+[audio]
+
+driver/output_latency=30
+driver/mix_rate=48000
 
 [physics]
 
@@ -43,7 +56,6 @@ common/physics_ticks_per_second=30
 
 [rendering]
 
-rendering_device/driver.windows="opengl3"
-renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
 textures/vram_compression/import_etc2_astc=true

@@ -17,6 +17,23 @@ var app_settings: Control = null
 @onready var board_text: RichTextLabel = %BoardText
 ## 左下角版本号。文字在 `_ready()` 里从 ProjectSettings 取，不硬编码（改版本号自动跟随）
 @onready var version_label: Label = %VersionLabel
+## 标题文字（安全区 inset 要把整块内容往右让）
+@onready var title_label: Label = %TitleLabel
+## 卫星图背景（宽屏时按视口等比放大铺满）
+@onready var background: Sprite2D = $Background
+
+## 设计分辨率。宽屏（aspect=expand）后逻辑宽度会 >1280，背景/按钮都要按它做参照。
+const DESIGN_SIZE := Vector2(1280.0, 720.0)
+## 背景在 1280x720 设计稿里的原始 transform（宽屏时按视口比例放大，构图比例不变）
+const BG_BASE_SCALE := 0.78161705
+const BG_BASE_POS := Vector2(866.99994, 367.0)
+
+## 按钮 / 标题 / 版本号在设计稿里的原始横向位置（安全区 inset 在此基础上叠加）
+var _menu_buttons: Array[Button] = []
+var _menu_base_x: Array[Vector2] = []
+var _title_base_x := Vector2(56.0, 616.0)
+var _version_base_x := Vector2(16.0, 260.0)
+var _version_base_y := Vector2(-34.0, -12.0)
 
 ## 主菜单背景音乐。
 ## 用「导出路径」而不是写死 `$TitleBgm`——这样你在编辑器里改名/挪动这个节点时
@@ -62,6 +79,53 @@ func _ready() -> void:
 	app_settings.on_closed = _on_app_settings_closed
 	app_settings.visible = false
 	single_button.grab_focus()
+
+	# ── 宽屏（aspect=expand）/ 安卓安全区布局 ──
+	# 按钮列原来按「宽度百分比」锚定，宽屏上会被横向拉开（按钮变超宽、和背景错位）；
+	# 场景里已改成固定像素列：1280x720 下坐标和原来逐像素一致，桌面行为不变。
+	_menu_buttons = [single_button, board_button, settings_button, exit_button]
+	_menu_base_x.clear()
+	for b in _menu_buttons:
+		_menu_base_x.append(Vector2(b.offset_left, b.offset_right))
+	_title_base_x = Vector2(title_label.offset_left, title_label.offset_right)
+	_version_base_x = Vector2(version_label.offset_left, version_label.offset_right)
+	_version_base_y = Vector2(version_label.offset_top, version_label.offset_bottom)
+	get_viewport().size_changed.connect(_relayout_title)
+	_relayout_title()
+	# ACE 排行榜弹窗的「确定」按钮不在场景里，只能代码补触摸高度 / 中文文案
+	board_popup.get_ok_button().custom_minimum_size = Vector2(160, 52)
+	board_popup.get_ok_button().text = "确定"
+
+
+# ============================ 宽屏 / 安全区布局 ============================
+
+## 手机横屏（aspect=expand）下逻辑宽度 >1280：
+##   · 背景卫星图按视口等比放大，构图锚点按视口比例 → 不会在右侧露底、也不变形；
+##   · 按钮列已经是固定像素列（见场景），不会被拉宽；
+##   · 安卓安全区 inset 把左侧内容避开刘海/挖孔，版本号避开底部手势条。
+## 桌面 16:9（1280x720）时 k=1、inset=0 → 与改动前完全一致。
+func _relayout_title() -> void:
+	var vp := get_viewport_rect().size
+	if vp.x <= 0.0 or vp.y <= 0.0:
+		return
+	var k := maxf(vp.x / DESIGN_SIZE.x, vp.y / DESIGN_SIZE.y)
+	background.scale = Vector2(BG_BASE_SCALE, BG_BASE_SCALE) * k
+	background.position = Vector2(
+		BG_BASE_POS.x * (vp.x / DESIGN_SIZE.x),
+		BG_BASE_POS.y * (vp.y / DESIGN_SIZE.y))
+
+	var ins := AndroidCompat.safe_insets()
+	for i in _menu_buttons.size():
+		var b := _menu_buttons[i]
+		var base := _menu_base_x[i]
+		b.offset_left = base.x + ins.x
+		b.offset_right = base.y + ins.x
+	title_label.offset_left = _title_base_x.x + ins.x
+	title_label.offset_right = _title_base_x.y + ins.x
+	version_label.offset_left = _version_base_x.x + ins.x
+	version_label.offset_right = _version_base_x.y + ins.x
+	version_label.offset_top = _version_base_y.x - ins.w
+	version_label.offset_bottom = _version_base_y.y - ins.w
 
 
 func _on_single_ty_pressed() -> void:

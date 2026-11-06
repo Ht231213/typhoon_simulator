@@ -17,6 +17,9 @@ extends RefCounted
 ## 默认导出格式：1.2.0 起是 NOAA/IBTrACS
 const DEFAULT_FORMAT := "noaa"
 
+## 默认导出目录名：桌面放在游戏根（exe 旁 / 工程根）下，安卓放在 user:// 下
+const BEST_TRACK_DIR_NAME := "BestTrack"
+
 ## 格式 id → writer 脚本。加新格式只要在这里加一行
 const WRITERS := {
 	"cma": preload("res://scripts/best_track/CmaWriter.gd"),
@@ -245,15 +248,19 @@ func _index_of(storm) -> int:
 ## `export_dir` 的解析规则（用户 2026-10-30：UI 不给选，但 `config/simulation.cfg`
 ## 的 `[export] best_track_dir` 可以调）：
 ##   · 空字符串 → 游戏根目录下的 `BestTrack/`（= default_export_dir()）
-##   · **相对路径** → 按「游戏根目录」解析（exe 旁 / 工程根）
-##   · 绝对路径 → 原样使用
+##   · **相对路径** → 按「游戏根目录」解析（exe 旁 / 工程根；安卓 = user://）
+##   · 绝对路径 → 原样使用（安卓上外部绝对路径通常不可写 → 会自动回退 user://BestTrack）
 func _pick_file_path(export_dir: String, for_year: int) -> String:
 	var dir := export_dir.strip_edges()
 	if dir == "":
 		dir = default_export_dir()
 	elif not dir.is_absolute_path():
 		dir = _game_root().path_join(dir)
-	DirAccess.make_dir_recursive_absolute(dir)
+	# user://（安卓）/ res:// 是引擎虚拟路径，建目录前先转成真实绝对路径（更稳妥）
+	var mk_dir := dir
+	if mk_dir.begins_with("user://") or mk_dir.begins_with("res://"):
+		mk_dir = ProjectSettings.globalize_path(mk_dir)
+	DirAccess.make_dir_recursive_absolute(mk_dir)
 	var stamp := Time.get_datetime_dict_from_system()
 	var ymd := "%02d%02d%02d" % [int(stamp["year"]) % 100, int(stamp["month"]), int(stamp["day"])]
 	var w := writer()
@@ -270,7 +277,12 @@ func _pick_file_path(export_dir: String, for_year: int) -> String:
 ## 游戏根目录：导出版 = exe 所在目录；编辑器/直接跑 = 工程根。
 ## ⚠ 必须用 `OS.has_feature("template")` 区分（1.2.0 修）：
 ##   导出版里 `ProjectSettings.globalize_path("res://")` 返回的是**空串**（res:// 在 pck 里）。
+## ⚠ 安卓（2026-11-06 移植）：APK 内的 res:// 只读、也没有可写的「exe 同目录」，
+##   唯一的可写位置是 `user://`（= 应用私有目录 data/data/<包名>/files）。
+##   返回 `user://` 而不是绝对路径，让调用方拼接后仍是 user:// 路径（FileAccess 认）。
 func _game_root() -> String:
+	if OS.has_feature("android"):
+		return "user://"
 	var root := ""
 	if OS.has_feature("template"):
 		root = OS.get_executable_path().get_base_dir()
@@ -282,8 +294,11 @@ func _game_root() -> String:
 
 
 ## 默认导出目录：游戏根目录下的 BestTrack/
+## 桌面 = exe 旁的 `BestTrack/`；安卓 = `user://BestTrack`（APK 目录不可写）
 func default_export_dir() -> String:
-	return _game_root().path_join("BestTrack")
+	if OS.has_feature("android"):
+		return "user://" + BEST_TRACK_DIR_NAME
+	return _game_root().path_join(BEST_TRACK_DIR_NAME)
 
 
 ## 写盘：格式全交给 writer

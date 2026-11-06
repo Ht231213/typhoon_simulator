@@ -30,8 +30,8 @@ extends PanelContainer
 ## 台风信息固定框（固定高度，避免出现/消失时侧栏跳动）
 @onready var info_box: PanelContainer = %InfoBox
 
-const PATH_ROW_HEIGHT := 36.0
-const CANCEL_ROW_HEIGHT := 36.0
+const PATH_ROW_HEIGHT := 48.0
+const CANCEL_ROW_HEIGHT := 48.0
 
 @onready var date_dialog: AcceptDialog = %DateDialog
 @onready var month_spin: SpinBox = %MonthSpin
@@ -51,6 +51,10 @@ func _ready() -> void:
 	cancel_button.pressed.connect(_on_cancel_pressed)
 
 	date_dialog.confirmed.connect(_on_date_confirmed)
+	# 安卓触摸：AcceptDialog 的「确定」按钮是内部创建的，不在场景里，只能代码补高度
+	# （默认文案是英文 OK，中文界面里改成本地化文案）
+	date_dialog.get_ok_button().custom_minimum_size = Vector2(140, 52)
+	date_dialog.get_ok_button().text = "确定"
 
 	sim.state_changed.connect(refresh)
 	sim.storm_finished.connect(_on_storm_finished)

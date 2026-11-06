@@ -18,6 +18,15 @@ extends CanvasLayer
 @onready var list_title: Label = %ListTitle
 @onready var hint_label: Label = %Hint
 
+## 外框（安全区）/ 限宽行 / 面板本体：安卓安全区 + 宽屏居中
+@onready var margin: MarginContainer = $Root/Margin
+@onready var frame: HBoxContainer = $Root/Margin/Frame
+@onready var panel_box: PanelContainer = $Root/Margin/Frame/Box
+
+## 宽屏（aspect=expand 后逻辑宽度 >1280）时面板的最大宽度：
+## 桌面 16:9 时仍全宽（与改动前一致），手机宽屏居中限宽，不被拉得怪。
+const MAX_PANEL_WIDTH := 1280.0
+
 ## 设置界面场景（打开时实例化，与主菜单共用同一份）
 const SETTINGS_SCENE := "res://SettingsMenu.tscn"
 var _settings: Control = null
@@ -27,9 +36,28 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	root.process_mode = Node.PROCESS_MODE_ALWAYS
 	root.visible = false
+	# 安卓安全区：刘海/手势条不挡按钮（桌面 inset 全 0，行为不变）
+	AndroidCompat.register_safe_area(margin)
+	frame.resized.connect(_update_frame_width)
+	get_viewport().size_changed.connect(_update_frame_width)
+	_update_frame_width()
 	resume_button.pressed.connect(resume)
 	menu_button.pressed.connect(_on_menu_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
+
+
+## 宽屏限宽居中：1280 是设计分辨率，桌面 16:9 可用宽度 <1280 → 仍全宽。
+func _update_frame_width() -> void:
+	if frame == null or panel_box == null:
+		return
+	var avail := frame.size.x
+	if avail <= 0.0:
+		# ⚠ 本脚本 extends CanvasLayer（不是 CanvasItem），没有 get_viewport_rect()，
+		#   要走 viewport 的 visible rect
+		avail = get_viewport().get_visible_rect().size.x \
+			- float(margin.get_theme_constant("margin_left")) \
+			- float(margin.get_theme_constant("margin_right"))
+	panel_box.custom_minimum_size.x = clampf(avail, 0.0, MAX_PANEL_WIDTH)
 
 
 func _unhandled_input(event: InputEvent) -> void:
