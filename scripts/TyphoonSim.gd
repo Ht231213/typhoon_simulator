@@ -725,11 +725,11 @@ static func event_sound_id(kind: String) -> String:
 		"c4":
 			return "mainicon.sound.c4"
 		"c5":
-			return "mainicon.sound.c5_170"
+			return "mainicon.sound.c5"
 	return ""
 
 
-''## 停掉所有背景循环音效（台风结束/取消/新台风开始时）
+## 停掉所有背景循环音效（台风结束/取消/新台风开始时）
 func _stop_background_sfx() -> void:
 	for kind in _bg_players.keys():
 		var p := _bg_players[kind] as AudioStreamPlayer

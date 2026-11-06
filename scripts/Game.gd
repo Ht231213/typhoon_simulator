@@ -228,15 +228,23 @@ func history(category: String) -> Array:
 
 # ============================ 格式化 ============================
 
+## 按**显示宽度**补空格（中文/全角算 2 列，用户 2026-11-06 要求列表对齐）
+static func _pad_display(s: String, width: int) -> String:
+	var w := 0
+	for i in s.length():
+		w += 2 if s.unicode_at(i) > 0x2E80 else 1
+	return s + " ".repeat(maxi(0, width - w))
+
+
 ## 台风列表的一行，例如 "C5  03W  Haiyan       170Kt  895mB  ACE19.70"
 static func format_record(rec: StormRecord) -> String:
 	var cat := Const.category_from_wind(rec.peak_wind_kt)
 	var name_part := rec.storm_name if rec.storm_name != "" else "（实际为空）"
 	# ⑰ 用户 2026-11-06：固定列宽对齐（等宽显示）
-	return "%-2s  %-4s  %-14s %4dKt  %5dmB  ACE %6.2f" % [
+	return "%-2s  %-4s  %s %4dKt  %5dmB  ACE %6.2f" % [
 		Const.category_short(cat),
 		rec.number_text if rec.number_text != "" else "----",
-		name_part,
+		_pad_display(name_part, 14),
 		int(roundf(rec.peak_wind_kt)),
 		int(roundf(rec.min_pressure)),
 		rec.ace,
