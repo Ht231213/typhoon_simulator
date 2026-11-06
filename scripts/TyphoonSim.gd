@@ -668,10 +668,13 @@ func _check_category_sfx(storm: Storm) -> void:
 	var phase := int(storm.phase)
 	# ⚠ disperse 的判定**每 tick 都要做**（不能放在「档位没变化就 return」之后——
 	#   温带变性时档位可能不变，比如 C1→EX 仍属同一类名档位）
-	if _prev_kt >= 15.0 and kt < 15.0 and phase != 2:
-		_play_event_sfx("disperse")        # 减弱到 <15 kt（残涡阈值）
-	if _prev_phase != 2 and phase == 2:
-		_play_event_sfx("disperse")        # 变性为温带气旋的那一刻
+	# 用户 2026-11-06 补充：两种情况都要播 disperse，并且只播一次（同 tick 由冷却去重）
+	#   ① **开始变性**（phase 0→1 那一刻）——不是变性完成（1→2）
+	#   ② 减弱为残余环流（kt 跌破 15 kt）
+	if int(_prev_phase) == 0 and phase == 1:
+		_play_event_sfx("disperse")
+	if _prev_kt >= 15.0 and kt < 15.0:
+		_play_event_sfx("disperse")
 	_prev_phase = phase
 	if cat == _prev_category:
 		_prev_kt = kt
