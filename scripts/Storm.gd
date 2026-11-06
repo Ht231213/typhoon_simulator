@@ -25,6 +25,14 @@ enum Phase {
 var phase: Phase = Phase.TROPICAL
 ## 变性中已经过了多少模拟天（用于渐变进度）
 var transition_days := 0.0
+## 本次变性目标时长（天）：随 B 缩短到 0.5~0.75
+var transition_target_days := Const.EXTRATROPICAL_TRANSITION_DAYS
+## 失败后的冷却（天），避免每 tick 反复摇概率
+var transition_cooldown := 0.0
+## 非锋面 ET / 冷心消散（失败但极端环境，仍按 EX 显示并快速消散）
+var cold_core_dissipate := false
+## ET burst 剩余展示天数（约 1/5 概率出现短时增强）
+var et_burst_days := 0.0
 ## 变性方向（**可逆**，用户 2026-10-30 明确要求）：
 ##   false = 正在「热带 → 温带」；true = 正在「温带 → 热带」（回南、海温回升时）
 var reverting := false
@@ -78,7 +86,7 @@ func transition_progress() -> float:
 		Phase.EXTRATROPICAL:
 			return 1.0
 		_:
-			return clampf(transition_days / Const.EXTRATROPICAL_TRANSITION_DAYS, 0.0, 1.0)
+			return clampf(transition_days / maxf(0.5, transition_target_days), 0.0, 1.0)
 
 var storm_name := ""
 ## 是否已「正式命名」（消耗掉命名表里的一个名字）。
@@ -235,14 +243,10 @@ func _update_pressure() -> void:
 		p = 1013.0 - 0.005 * kt_sq
 	else:
 		p = 1013.0 - 0.0042 * kt_sq
-	# 用户 2026-11-06：C5 以上改用**渐近下限**（不再硬钳）：
-	#   p = 870 + A·exp(-(kt-137)/K)，永远到不了 870，越强下降越慢。
-	#   在 kt=137 处与参考公式连续（参考值 ≈ 934.2 mB）。
-	if wind_kt >= 170.0:
-		# kt=170 处参考公式值 ≈ 891.6 mB，从此出发向 870 渐近（K=110）
-		p = 870.0 + 21.6 * exp(-(wind_kt - 170.0) / 110.0)
 	p = roundf(p)
-	p = clampf(p, 871.0, 1010.0)   # 硬边界只保证极端数值不出 0/负数；正常段远高于 871
+	# 用户 2026-11-06：气压公式保持参考三段式（风速本身也不合理，就不单独改了）；
+	# 仅保留边界防 0/负数。
+	p = clampf(p, 871.0, 1010.0)
 	central_pressure = p
 
 
@@ -256,51 +260,58 @@ func _update_ace() -> void:
 
 
 ## 原「检测类型」。
-## 参考里类型 −4 是「纬度 > 西风带纬度」时设的，本工程用 phase 表达变性过程
-## （用户决定保留「纬度+海温双条件 + 渐变」这套，不用参考的单纬度判断）。
-func _update_category() -> void:
-	if phase != Phase.TROPICAL:
-		category = Const.CAT_EXTRATROPICAL
-		return
-	category = Const.category_from_wind(wind_kt)
+## 温带变性连续指数 B（研究文档 10 号 §6.1）：
+##   B = 0.50·clamp((lat−28)/14) + 0.30·clamp((26.5−SST)/3.5) + 0.20·clamp((shear−10)/20)
+## 等效「30~42°N 动态触发」：夏天偏北、秋冬偏南（SST/切变随季节变化）。
+func transition_index() -> float:
+	return 0.50 * clampf((latitude - 28.0) / 14.0, 0.0, 1.0) \
+		+ 0.30 * clampf((26.5 - sst_here) / 3.5, 0.0, 1.0) \
+		+ 0.20 * clampf((shear_display - 10.0) / 20.0, 0.0, 1.0)
 
 
-## 推进变性过程。每个物理 tick 调用，days 是经过的模拟天数。
-##
-## 触发条件（纬度 + 海温双条件）：北上到 TYPHOON_LAT_LIMIT 以北，且海温低于阈值
-## → 进入「变性中」，持续 EXTRATROPICAL_TRANSITION_DAYS 天后变成完全温带气旋。
-##
-## ⚠ **变性是可逆的**（用户 2026-10-30 明确要求，对应现实的 tropical transition）：
-##   台风回到「纬度 < TYPHOON_LAT_LIMIT 且 SST > EXTRATROPICAL_SST_THRESHOLD」的暖水
-##   会从 EXTRATROPICAL 回退 TRANSITIONING → TROPICAL，而且**比正向慢**
-##   （回退要 EXTRATROPICAL_REVERT_DAYS = 正向 × 2.5）。
-##   方向记在 `reverting` 里；两个方向切换时按进度**按比例换算**，不会瞬变。
+## 变回热带（TT）的苛刻条件（研究 §4：现实极罕见）
+func _tt_conditions_met() -> bool:
+	return sst_here >= Const.TT_SST_MIN and latitude < Const.TT_LAT_MAX \
+		and shear_display < Const.TT_SHEAR_MAX
+
+
+## 变性推进（用户 2026-11-06 按真实气象重做）：
+##   触发 = 连续指数 B ≥ 0.65（不再是纬度 AND 海温硬门槛）
+##   成功率 = clamp(0.30+0.70·B_norm, 0.15, 0.95) × gate(kt)
+##   时长   = 0.5~0.75 天（B 越高越快），回退 = ×2.5
+##   失败   = 继续热带减弱；B≥0.85 时走「非锋面 ET / 冷心消散」（仍显示 EX）
 func update_transition(days: float) -> void:
-	var too_far_north := latitude > Const.TYPHOON_LAT_LIMIT
-	var too_cold := sst_here < Const.EXTRATROPICAL_SST_THRESHOLD
-	var outgoing := too_far_north and too_cold      # 条件是否还在"往温带推"
-	var fwd: float = Const.EXTRATROPICAL_TRANSITION_DAYS
+	var b := transition_index()
+	var gate := 0.0
+	if wind_kt >= 34.0:
+		gate = 1.0
+	elif wind_kt >= Const.TRANSITION_MIN_KT:
+		gate = 0.5
+	if transition_cooldown > 0.0:
+		transition_cooldown = maxf(0.0, transition_cooldown - days)
 	var rev: float = Const.EXTRATROPICAL_REVERT_DAYS
 	match phase:
 		Phase.TROPICAL:
-			if outgoing:
-				phase = Phase.TRANSITIONING
-				reverting = false
-				transition_days = 0.0
-		Phase.TRANSITIONING:
-			if outgoing:
-				if reverting:
-					# 正在回热带时条件又变差：按剩余比例换算成正向进度，再继续往温带走
-					var progress := 1.0 - clampf(transition_days / rev, 0.0, 1.0)
+			if b >= Const.TRANSITION_B_START and gate > 0.0 and transition_cooldown <= 0.0:
+				var bnorm := clampf((b - 0.5) / 0.5, 0.0, 1.0)
+				var p := clampf(0.30 + 0.70 * bnorm, 0.15, 0.95) * gate
+				if _rng.randf() <= p:
+					phase = Phase.TRANSITIONING
 					reverting = false
-					transition_days = progress * fwd
-				transition_days += days
-				if transition_days >= fwd:
-					phase = Phase.EXTRATROPICAL
 					transition_days = 0.0
-			else:
+					transition_target_days = maxf(0.5, Const.EXTRATROPICAL_TRANSITION_DAYS - 0.25 * bnorm)
+				elif b >= Const.TRANSITION_STRONG_B:
+					# 非锋面 ET / 冷心消散：环境极强但失败 → 仍显示 EX，快速消散
+					phase = Phase.EXTRATROPICAL
+					cold_core_dissipate = true
+					transition_days = 0.0
+				else:
+					transition_cooldown = 0.5
+		Phase.TRANSITIONING:
+			var fwd := maxf(0.5, transition_target_days)
+			if _tt_conditions_met():
+				# 只有苛刻的 TT 条件才允许回热带
 				if not reverting:
-					# 正在往温带走时条件转好：按已有进度换算成"还剩多少天回到热带"
 					var progress := clampf(transition_days / fwd, 0.0, 1.0)
 					reverting = true
 					transition_days = (1.0 - progress) * rev
@@ -309,12 +320,38 @@ func update_transition(days: float) -> void:
 					phase = Phase.TROPICAL
 					transition_days = 0.0
 					reverting = false
+			else:
+				if reverting:
+					var progress2 := 1.0 - clampf(transition_days / rev, 0.0, 1.0)
+					reverting = false
+					transition_days = progress2 * fwd
+				if b >= Const.TRANSITION_B_KEEP or transition_days > 0.0:
+					transition_days += days
+				if transition_days >= fwd:
+					phase = Phase.EXTRATROPICAL
+					transition_days = 0.0
+					reverting = false
+					_maybe_et_burst()
 		Phase.EXTRATROPICAL:
-			# 已完全变性：条件转好就进入「回热带」的慢速渐变
-			if not outgoing:
+			if _tt_conditions_met():
 				phase = Phase.TRANSITIONING
 				reverting = true
 				transition_days = rev
+
+
+## ET burst（研究 §5）：约 1/5 变性后出现 6~12 小时 +5~15% 短时增强
+func _maybe_et_burst() -> void:
+	if _rng.randf() < 0.20:
+		wind_kt *= _rng.randf_range(1.05, 1.15)
+		et_burst_days = _rng.randf_range(0.25, 0.5)
+		transition_days = 0.0
+
+
+func _update_category() -> void:
+	if phase != Phase.TROPICAL:
+		category = Const.CAT_EXTRATROPICAL
+		return
+	category = Const.category_from_wind(wind_kt)
 
 
 ## 原「记录巅峰状态」

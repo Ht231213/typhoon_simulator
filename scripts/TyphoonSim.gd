@@ -188,6 +188,14 @@ func _physics_process(delta: float) -> void:
 	#   ⚠ 这条依赖陆地衰减的 Vb 已改成 8 kt —— 旧 Vb=26.7 时强度永远降不到 15，阈值形同虚设。
 	# ⚠ 用户 2026-11-06：变性完成后不能因为风速 <15 kt 就直接消散（那样看不到 EX 图标）。
 	#   温带气旋本来就可能很弱 → 只有「热带/变性中」才用 15 kt 消散判据。
+	# 研究文档 10 号 §6.3：路径走完时若还在变性中 → **先置为已完成 ET 再结束**，
+	# 否则永远到不了 EXTRATROPICAL 状态（用户「不切 EX 直接消散」的直接原因）
+	if storm.track_done() and int(storm.phase) == 1:
+		storm.phase = Storm.Phase.EXTRATROPICAL
+		storm.transition_days = 0.0
+		storm.tick_live()
+		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
+		_on_phase_changed(storm, Storm.Phase.TRANSITIONING)
 	if storm.track_done() or (storm.wind_kt <= 15.0 and int(storm.phase) != 2):
 		_finish_storm()
 

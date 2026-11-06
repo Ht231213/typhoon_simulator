@@ -328,10 +328,24 @@ const TYPHOON_LAT_LIMIT := 45.0
 ## 海温低于这个值才算具备变性条件（与纬度组成双条件）
 const EXTRATROPICAL_SST_THRESHOLD := 24.0
 ## 变性过程持续多少模拟天（渐变：热带 → 变性中 → 温带气旋）
-const EXTRATROPICAL_TRANSITION_DAYS := 1.0
+const EXTRATROPICAL_TRANSITION_DAYS := 0.75
 ## 「温带 → 热带」回退耗时 = 正向 × 2.5（现实里热带变性比正向变性罕见，
 ## 且比正向慢；用户 2026-10-30 要求可逆，Lead 要求 2~3 倍）
 const EXTRATROPICAL_REVERT_DAYS := EXTRATROPICAL_TRANSITION_DAYS * 2.5
+
+# ---- 温带变性（ET）连续指数（研究文档 10 号，用户 2026-11-06）----
+## 触发指数下限（等效 30~42°N 动态触发）
+const TRANSITION_B_START := 0.65
+## 低于这个 B 则不再继续往温带推（滞回）
+const TRANSITION_B_KEEP := 0.55
+## 强度门槛：<20 kt 不变性；20~34 kt 概率减半
+const TRANSITION_MIN_KT := 20.0
+## 极端环境下的失败 → 非锋面 ET / 冷心消散（仍然显示 EX）
+const TRANSITION_STRONG_B := 0.85
+## 变回热带（TT）的苛刻条件
+const TT_SST_MIN := 27.0
+const TT_LAT_MAX := 30.0
+const TT_SHEAR_MAX := 10.0
 
 # ------------------------- 西风带 / 风切变 -------------------------
 ## 台风越过西风带纬度就开始受中纬西风影响（风切变上升、逐渐变性）。
@@ -491,9 +505,9 @@ var SHEAR_WALK_INTERVAL := 0.1
 ## 初始风切变范围（参考在开始模拟前 `set 垂直风切变 = random(0, 30)`）
 const SHEAR_INIT_MAX := 30.0
 ## 变性中每天的额外衰减（节/天）。参考里没有这一项，是本工程保留的附加项。
-const EXTRATROPICAL_WEAKENING := 6.0
+const EXTRATROPICAL_WEAKENING := 4.5
 ## 完全变性后每天的额外衰减（节/天），比变性中更快
-const EXTRATROPICAL_WEAKENING_DONE := 9.0
+const EXTRATROPICAL_WEAKENING_DONE := 5.5
 
 ## 地图上的经纬网刻度（只用于显示）
 const GRID_LON_STEP := 10.0
