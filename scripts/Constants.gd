@@ -691,10 +691,11 @@ func super_typhoon_damping(wind_kt: float) -> float:
 # τ 按地形分三档（研究结论：地形 > 移速 > 土壤湿度 > 大小结构）：
 #   平地 18h ｜ 1000m 山区 16h ｜ 2500m 高山 9h
 # 2500m 那档专门用来复现「穿过台湾中央山脉 / 吕宋高山」的急降。
-var LAND_DECAY_BG_KT := 8.0
-var LAND_DECAY_TAU_PLAIN := 18.0
-var LAND_DECAY_TAU_MOUNTAIN := 16.0
-var LAND_DECAY_TAU_MOUNTAIN2500 := 9.0
+var LAND_DECAY_BG_KT := 0.0
+
+var LAND_DECAY_TAU_PLAIN := 10.0
+var LAND_DECAY_TAU_MOUNTAIN := 9.0
+var LAND_DECAY_TAU_MOUNTAIN2500 := 5.0
 
 ## 每个 tick 代表多少模拟小时（由 TICKS_PER_DAY 反推，见 _sync_tick_rate）
 var HOURS_PER_TICK := 0.2

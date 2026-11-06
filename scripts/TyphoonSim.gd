@@ -199,7 +199,7 @@ func _physics_process(delta: float) -> void:
 		storm.tick_live()
 		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
 		_on_phase_changed(storm, Storm.Phase.TRANSITIONING)
-	if storm.track_done() or (storm.wind_kt <= 15.0 and int(storm.phase) != 2):
+	if storm.track_done() or storm.wind_kt <= 0.5:
 		_finish_storm()
 
 
@@ -288,6 +288,12 @@ func _wind_delta_rate(storm: Storm) -> float:
 	else:
 		season = 1.0 / 12.0
 	delta += season - _rng.randf_range(0.085, 0.09)
+
+	# 用户 2026-11-07：残余环流（<15 kt）**没有暖心结构，不该继续增强**。
+	# 这里只缩放**正向环境增量**（负值不动，冷洋面照样快速压弱），
+	# 让指数衰减能把它一路压到 0，而不是被正噪声托在 3~4 kt。
+	if storm.wind_kt < 15.0 and delta > 0.0:
+		delta *= clampf(storm.wind_kt / 15.0, 0.0, 1.0)
 
 	# ⑥ 陆地/山区衰减 —— **本工程已改成指数式，参考原文是线性扣减**。
 	#
