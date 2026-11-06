@@ -643,7 +643,6 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	_prev_category = 999
 	_prev_kt = storm.wind_kt
 	_cat_hist.clear()
-	MusicManager.play_sim()
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
 	state_changed.emit()
 
@@ -737,7 +736,7 @@ func _stop_background_sfx() -> void:
 ##   其余            → 静音
 ## ⚠ 两个区间**互斥**（中间隔着 C5），不需要优先级判断。
 func _update_background_sfx(kt: float, _cat: int) -> void:
-	var wants_c4 := kt >= 113.0 and kt < 137.0
+	var wants_c4 := kt >= 113.0 and kt < 170.0
 	var wants_c5_170 := kt >= 170.0
 	for kind in _bg_players.keys():
 		var p := _bg_players[kind] as AudioStreamPlayer
@@ -745,9 +744,34 @@ func _update_background_sfx(kt: float, _cat: int) -> void:
 			continue
 		var want := wants_c5_170 if kind == "c5" else wants_c4
 		if want and not p.playing:
-			p.play()
+			_fade_in(p)
 		elif not want and p.playing:
-			p.stop()
+			_fade_out_stop(p)
+
+
+## ⑫ 音效淡入淡出（用户 2026-11-06）：所有播放 0.5 s 淡入；循环停止 0.5 s 淡出
+const SFX_FADE_SECONDS := 0.5
+const SFX_FADE_LOW_DB := -40.0
+
+
+func _fade_in(player: AudioStreamPlayer) -> void:
+	if player == null:
+		return
+	player.volume_db = SFX_FADE_LOW_DB
+	if not player.playing:
+		player.play()
+	var tw := player.create_tween()
+	tw.tween_property(player, "volume_db", 0.0, SFX_FADE_SECONDS)
+
+
+func _fade_out_stop(player: AudioStreamPlayer) -> void:
+	if player == null or not player.playing:
+		return
+	var tw := player.create_tween()
+	tw.tween_property(player, "volume_db", SFX_FADE_LOW_DB, SFX_FADE_SECONDS)
+	tw.tween_callback(func() -> void:
+		player.stop()
+		player.volume_db = 0.0)
 
 
 ## 播放事件音效。没有素材（stream == null）就静音，不报错。'
@@ -759,7 +783,7 @@ func _play_event_sfx(kind: String) -> void:
 	if now - int(_event_sfx_last_ms.get(kind, -100000)) < EVENT_SFX_COOLDOWN_MS:
 		return
 	_event_sfx_last_ms[kind] = now
-	player.play()
+	_fade_in(player)
 
 
 ## 台风「正常结束」（走完路径 / 减弱消散）。按 {1} 的规定：
@@ -779,7 +803,6 @@ func _finish_storm() -> void:
 	_play_event_sfx("disperse")          # 事件音效：消散 / 转温（没素材就静音）
 	active_storm = null
 	_stop_background_sfx()
-	MusicManager.stop_sim()
 	path.live_visible = false
 	path.queue_redraw()
 	# 冷却只在风季模式生效（非风季模式不显示也不需要等）
@@ -895,7 +918,7 @@ func _play_landfall_sfx(storm: Storm) -> void:
 	idx = clampi(idx, 0, LANDFALL_FILES.size() - 1)
 	var player := _sfx_players[idx]
 	if player.stream != null:
-		player.play()
+		_fade_in(player)
 	# 没有素材 → 静音（不打扰玩家）
 
 

@@ -232,7 +232,8 @@ func history(category: String) -> Array:
 static func format_record(rec: StormRecord) -> String:
 	var cat := Const.category_from_wind(rec.peak_wind_kt)
 	var name_part := rec.storm_name if rec.storm_name != "" else "（实际为空）"
-	return "%-2s  %-5s %-12s %3dKt  %4dmB  ACE%.2f" % [
+	# ⑰ 用户 2026-11-06：固定列宽对齐（等宽显示）
+	return "%-2s  %-4s  %-14s %4dKt  %5dmB  ACE %6.2f" % [
 		Const.category_short(cat),
 		rec.number_text if rec.number_text != "" else "----",
 		name_part,

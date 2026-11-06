@@ -2,7 +2,7 @@ extends Node
 ## ⚠ 说明：这是 autoload（MusicManager）。由 project.godot 的 [autoload] 注册。
 ## 背景音乐播放器（用户 2026-11-06）：
 ##   标题画面 → music.titlescreen
-##   模拟过程 → 从 music.ty.1 .. ty.20 里**随机抽一首**，避免连续重复，一曲结束自动下一曲
+##   模拟过程 → 从 music.simu.1 .. simu.20 里**随机抽一首**，避免连续重复，一曲结束自动下一曲
 ##   音量走 Music 总线（设置里的「音乐音量」滑块；没有音乐 ID 时滑块隐藏）
 ## 素材来自**当前方案包**（IconPacks）；方案包没有 music.* → 静音。
 
@@ -42,7 +42,7 @@ func has_music() -> bool:
 func _sim_track_ids() -> Array[String]:
 	var out: Array[String] = []
 	for id in music_ids():
-		if id.begins_with("music.ty."):
+		if id.begins_with("music.simu."):
 			out.append(id)
 	return out
 

@@ -28,6 +28,7 @@ var _scale := 1.0
 
 
 func _ready() -> void:
+	MusicManager.play_sim()
 	# ESC 全暂停（get_tree().paused）时界面仍要能操作，所以本场景常驻处理
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
@@ -169,3 +170,9 @@ func _on_season_finished() -> void:
 	var saved := Game.commit_session_to_save()
 	results_panel.show_results(saved)
 	sidebar._on_notice("风季结束，成绩已写入 %s" % Game.save_path_absolute())
+
+
+
+func _exit_tree() -> void:
+	# 离开模拟场景 → 停模拟音乐（标题画面会自己播 music.titlescreen）
+	MusicManager.stop_sim()
