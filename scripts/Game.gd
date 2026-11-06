@@ -154,7 +154,28 @@ func next_storm_name() -> String:
 
 # ============================ 存档读写 ============================
 
-const SAVE_PATH := "user://ace_records.json"
+const SAVE_FILE_NAME := "ace_records.json"
+
+## 存档放游戏目录下的 saves/（用户 2026-11-06：所有写盘都离开 user://）
+static func save_path() -> String:
+	var dir := GameSettings.game_dir().path_join("saves")
+	DirAccess.make_dir_recursive_absolute(dir)
+	return dir.path_join(SAVE_FILE_NAME)
+
+
+## 老版本存档在 user://ace_records.json → 第一次启动搬到 saves/（只搬一次）
+static func migrate_old_save() -> void:
+	var dst := save_path()
+	if FileAccess.file_exists(dst):
+		return
+	var old := "user://ace_records.json"
+	if not FileAccess.file_exists(old):
+		return
+	var data := FileAccess.get_file_as_bytes(old)
+	var f := FileAccess.open(dst, FileAccess.WRITE)
+	if f != null:
+		f.store_buffer(data)
+		f.close()
 
 ## 存档结构：
 ## {
@@ -166,17 +187,17 @@ const SAVE_PATH := "user://ace_records.json"
 ## }
 
 func load_save() -> Dictionary:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path()):
 		return {"version": 1, "categories": {}}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var f := FileAccess.open(save_path(), FileAccess.READ)
 	if f == null:
-		push_warning("无法读取存档：%s" % SAVE_PATH)
+		push_warning("无法读取存档：%s" % save_path())
 		return {"version": 1, "categories": {}}
 	var text := f.get_as_text()
 	f.close()
 	var parsed: Variant = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
-		push_warning("存档格式损坏，已忽略：%s" % SAVE_PATH)
+		push_warning("存档格式损坏，已忽略：%s" % save_path())
 		return {"version": 1, "categories": {}}
 	var data: Dictionary = parsed
 	if not data.has("categories"):
@@ -205,9 +226,9 @@ func commit_session_to_save() -> bool:
 	categories[category] = list
 	data["categories"] = categories
 
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(save_path(), FileAccess.WRITE)
 	if f == null:
-		push_error("无法写入存档：%s" % SAVE_PATH)
+		push_error("无法写入存档：%s" % save_path())
 		return false
 	f.store_string(JSON.stringify(data, "\t"))
 	f.close()
@@ -222,7 +243,7 @@ func history(category: String) -> Array:
 
 
 func save_path_absolute() -> String:
-	return ProjectSettings.globalize_path(SAVE_PATH)
+	return save_path()
 
 
 # ============================ 格式化 ============================

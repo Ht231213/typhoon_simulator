@@ -11,9 +11,40 @@ extends Node
 
 signal changed
 
-const SAVE_PATH := "user://settings.cfg"
+## 默认设置模板（打包进 pck）。第一次启动复制到游戏目录的 settings.cfg
+const TEMPLATE_PATH := "res://config/settings_default.cfg"
+## 设置文件名（放在**游戏目录**下，用户可直接编辑；不再用 user://）
+const SAVE_FILE_NAME := "settings.cfg"
 ## 方案包扫描（老配置迁移时要用）
 const IconPacksLoader := preload("res://scripts/IconPacks.gd")
+
+
+## 游戏目录：打包版 = exe 所在目录；编辑器 = 工程根
+static func game_dir() -> String:
+	if OS.has_feature("editor"):
+		return ProjectSettings.globalize_path("res://")
+	return OS.get_executable_path().get_base_dir()
+
+
+## 设置文件绝对路径（游戏目录/settings.cfg）
+static func save_path() -> String:
+	return game_dir().path_join(SAVE_FILE_NAME)
+
+
+## 第一次启动：把模板复制到游戏目录
+static func ensure_default_file() -> void:
+	var dst := save_path()
+	if FileAccess.file_exists(dst):
+		return
+	if not FileAccess.file_exists(TEMPLATE_PATH):
+		return
+	var data := FileAccess.get_file_as_bytes(TEMPLATE_PATH)
+	var f := FileAccess.open(dst, FileAccess.WRITE)
+	if f == null:
+		push_warning("无法创建默认设置文件：%s" % dst)
+		return
+	f.store_buffer(data)
+	f.close()
 const BUS_MUSIC := "Music"
 const BUS_SFX := "SFX"
 
@@ -96,6 +127,7 @@ func set_icon_pack(name: String) -> void:
 
 
 func _ready() -> void:
+	ensure_default_file()
 	_ensure_buses()
 	_route_music_players()
 	_load()
@@ -235,9 +267,9 @@ func _save() -> void:
 	cfg.set_value("sim", "best_track_dir", best_track_dir)
 	cfg.set_value("sim", "best_track_format", best_track_format)
 	cfg.set_value("sim", "wind_unit_index", wind_unit_index)
-	var err := cfg.save(SAVE_PATH)
+	var err := cfg.save(save_path())
 	if err != OK:
-		push_warning("设置写入失败：%s" % SAVE_PATH)
+		push_warning("设置写入失败：%s" % save_path())
 
 
 ## 老「方案名」→ 新「方案包名」：旧的 default/smcy1_3/smcy13 → 扫描到的 SMCY 包（没有就空）
@@ -255,7 +287,7 @@ static func _migrate_scheme_to_pack(old: String) -> String:
 
 func _load() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) != OK:
+	if cfg.load(save_path()) != OK:
 		return                                  # 没有存档就用默认值
 	music_volume = clampf(float(cfg.get_value("audio", "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx_volume", sfx_volume)), 0.0, 1.0)
@@ -309,4 +341,4 @@ func commit() -> void:
 
 
 func save_path_absolute() -> String:
-	return ProjectSettings.globalize_path(SAVE_PATH)
+	return save_path()

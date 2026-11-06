@@ -135,8 +135,9 @@ func sample_line(s: Dictionary, t: Dictionary, _write_year: int) -> String:
 
 ## 文件名：`ibtracs.SIM.<ISO年>.list.v04r01.csv`（决议 F）。
 ## 不用系统日期：同一个风季的文件名可预测、可覆盖检查。
-func file_base(dir: String, _ymd: String, year_index: int) -> String:
-	return dir.path_join("ibtracs.SIM.%04d.list.v04r01" % _iso_year(year_index))
+func file_base(dir: String, stamp: String, _year_index: int) -> String:
+	# 用户 2026-11-06：文件名用**导出时的系统时间**（例：ibtracs.SIM.20261106T200612.list.v04r01.csv）
+	return dir.path_join("ibtracs.SIM.%s.list.v04r01" % stamp)
 
 
 ## 声明（决议 C）：写在**同目录** `README-SIM.txt`，已存在就跳过。

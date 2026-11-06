@@ -1,6 +1,6 @@
 {
  "version": 1,
- "type": "advanced",
+ "type": "adv_extend",
  "icon_size": 100,
  "object": [
   {
@@ -97,13 +97,22 @@
    "mainicon.sound.c4": "sound/mainicon_sound_c4.ogg"
   },
   {
-   "mainicon.sound.c5_170": "sound/mainicon_sound_c5_170.ogg"
+   "mainicon.sound.c5": "sound/mainicon_sound_c5_170.ogg"
   },
   {
    "particle.eri": "particle/particle_eri.ogv"
   },
   {
    "particle.note_ts": "particle/particle_note_ts.ogv"
+  }
+ ],
+ "effect": [
+  {
+   "mainicon.icon.north.c5": {
+	"speed": 170,
+	"color": "#7B68EE",
+	"gradient": 0.4
+   }
   }
  ]
 }

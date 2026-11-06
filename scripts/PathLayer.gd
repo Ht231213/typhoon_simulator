@@ -241,7 +241,7 @@ func _icon_kind() -> String:
 		return "ts"
 	if kt >= 22.0:
 		return "d"
-	if kt >= 10.0:
+	if kt >= 15.0:
 		return "l"
 	return "x"
 
@@ -333,6 +333,7 @@ func _update_icon() -> void:
 	_icon_video.size = Vector2(d, d)
 	_icon_video.position = live_position - Vector2(d, d) * 0.5
 	_icon_video.visible = true
+	_reset_tint_target()
 	_apply_video_tint()
 	_apply_video_alpha()
 	queue_redraw()
@@ -401,25 +402,45 @@ static func icon_diameter_for(base: float, kt: float) -> float:
 	return base * (1.0 + k)
 
 
-## 170+ 的默认「渲染变色」：没有扩展 ID 时，C5 图标随强度向蓝/紫渐变
-## （用户 2026-11-05：正常情况没有扩展就按 C5 图标 + ≥170 kt 变蓝，<170 恢复正常颜色）
-const TINT_170 := Color(0.45, 0.55, 1.0)
-const TINT_250 := Color(0.58, 0.42, 1.0)
+## 调色：**只来自方案包的 effect**（用户 2026-11-06：删掉写死的 170+ 变色）
+## effect 规则见 IconPacks.effect_for：图标命中后，speed ≤ 当前风速才生效。
+## gradient > 0 时用 _process 每帧向目标颜色线性逼近。
+var _tint_shown := Color.WHITE
+var _tint_target := Color.WHITE
+var _tint_gradient := 0.0
 
 
-func _tint_for_current() -> Color:
-	if _icon_uses_extension or int(live_phase) >= 2:
-		return Color.WHITE
-	var kt := live_intensity
-	if kt < 170.0:
-		return Color.WHITE
-	if kt < 250.0:
-		return Color.WHITE.lerp(TINT_170, clampf((kt - 170.0) / 80.0, 0.0, 1.0))
-	return TINT_170.lerp(TINT_250, clampf((kt - 250.0) / 150.0, 0.0, 1.0))
+func _target_tint() -> Dictionary:
+	var id := current_icon_id()
+	var e := IconPacksLoader.effect_for(icon_pack, id, live_intensity)
+	if e.is_empty():
+		return {"color": Color.WHITE, "gradient": 0.0}
+	var tint := Color.WHITE
+	var color_str := str(e.get("color", "")).strip_edges()
+	var brightness := float(e.get("brightness", 0.0))
+	if color_str != "":
+		tint = Color.from_string(color_str, Color.WHITE)
+	if brightness <= -100.0:
+		tint = Color.BLACK
+	elif brightness >= 100.0:
+		tint = Color.WHITE
+	elif brightness != 0.0:
+		var k := clampf(1.0 + brightness / 100.0, 0.0, 2.0)
+		tint = Color(tint.r * k, tint.g * k, tint.b * k, tint.a)
+	return {"color": tint, "gradient": maxf(0.0, float(e.get("gradient", 0.0)))}
+
+
+## 重新计算目标色（图标切换时调用）
+func _reset_tint_target() -> void:
+	var t := _target_tint()
+	_tint_target = t["color"]
+	_tint_gradient = float(t["gradient"])
+	if _tint_gradient <= 0.0:
+		_tint_shown = _tint_target
 
 
 func _apply_video_tint() -> void:
-	var tint := _tint_for_current()
+	var tint := _tint_shown
 	for p in [_icon_video, _icon_video_prev]:
 		if p != null and p.material is ShaderMaterial:
 			(p.material as ShaderMaterial).set_shader_parameter("tint", tint)
@@ -468,6 +489,16 @@ func _hide_icon() -> void:
 
 func _process(delta: float) -> void:
 	_advance_video_fade(delta)
+	# effect 的 gradient：每帧向目标色线性逼近（用户 2026-11-06）
+	if not _tint_shown.is_equal_approx(_tint_target):
+		if _tint_gradient > 0.0:
+			_tint_shown = _tint_shown.lerp(_tint_target, minf(1.0, delta / _tint_gradient))
+			# 足够接近就吸附，避免永远差一点点导致每帧都调 shader
+			if _tint_shown.is_equal_approx(_tint_target):
+				_tint_shown = _tint_target
+		else:
+			_tint_shown = _tint_target
+		_apply_video_tint()
 	if _icon_fading:
 		_icon_fade = maxf(0.0, _icon_fade - delta / ICON_FADE_SECONDS)
 		_apply_video_alpha()

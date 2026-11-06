@@ -57,8 +57,10 @@ const EVENT_SFX_COOLDOWN_MS := 2000
 var _event_sfx_last_ms: Dictionary = {}
 ## 上一 tick 的类别（用来判断升档/降档）；999 = 还没初始化
 var _prev_category := 999
-## 上一 tick 的风速（跨 170 kt 门槛判定用）
+## 上一 tick 的风速（跨门槛判定用）
 var _prev_kt := 0.0
+## 上一 tick 的变性阶段（转入 EXTRATROPICAL 的那一刻放 disperse）
+var _prev_phase := 0
 ## 最近 1 秒内的档位变化记录（E 组「连跳两级」判定）: [{"ms": int, "from": int, "to": int}]
 var _cat_hist: Array = []
 
@@ -648,17 +650,24 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 ##   mainicon.sound.ts      强度达到热带风暴
 ##   mainicon.sound.c4      达到四级台风（背景音效）
 ##   mainicon.sound.suty    达到超强台风（本工程按 C5 = 137 kt 起算）
-##   mainicon.sound.c5_170  达到 170 kt
+##   mainicon.sound.c5      达到 170 kt（ID 已改名，见规范）
 ##   mainicon.sound.eri     1 秒内连跳两级且 ≥C1（在粒子事件里）
 ##   mainicon.sound.disperse 消散 / 转成温带
 func _check_category_sfx(storm: Storm) -> void:
 	var cat := int(storm.category)
 	var kt := storm.wind_kt
+	var phase := int(storm.phase)
+	# ⚠ disperse 的判定**每 tick 都要做**（不能放在「档位没变化就 return」之后——
+	#   温带变性时档位可能不变，比如 C1→EX 仍属同一类名档位）
+	if _prev_kt >= 15.0 and kt < 15.0 and phase != 2:
+		_play_event_sfx("disperse")        # 减弱到 <15 kt（残涡阈值）
+	if _prev_phase != 2 and phase == 2:
+		_play_event_sfx("disperse")        # 变性为温带气旋的那一刻
+	_prev_phase = phase
 	if cat == _prev_category:
 		_prev_kt = kt
 		return
 	var prev := _prev_category
-	var prev_kt := _prev_kt
 	_prev_category = cat
 	_prev_kt = kt
 	if prev == 999:
@@ -668,8 +677,6 @@ func _check_category_sfx(storm: Storm) -> void:
 		_play_event_sfx("ts")
 	if prev < Const.CAT_C5 and cat >= Const.CAT_C5:
 		_play_event_sfx("suty")           # 一次性（不循环）
-	if cat < Const.CAT_NAMED and prev >= Const.CAT_NAMED:
-		_play_event_sfx("disperse")
 	_check_particle_events(storm, prev, cat)
 
 
@@ -708,7 +715,7 @@ static func event_sound_id(kind: String) -> String:
 			return "mainicon.sound.disperse"
 		"c4":
 			return "mainicon.sound.c4"
-		"c5_170":
+		"c5":
 			return "mainicon.sound.c5_170"
 	return ""
 
@@ -734,7 +741,7 @@ func _update_background_sfx(kt: float, _cat: int) -> void:
 		var p := _bg_players[kind] as AudioStreamPlayer
 		if p == null or p.stream == null:
 			continue
-		var want := wants_c5_170 if kind == "c5_170" else wants_c4
+		var want := wants_c5_170 if kind == "c5" else wants_c4
 		if want and not p.playing:
 			p.play()
 		elif not want and p.playing:
@@ -830,7 +837,7 @@ func _setup_sfx() -> void:
 		_sfx_players.append(player)
 		player.stream = IconPacks.audio(GameSettings.icon_pack, GameSettings.landfall_sound_id(i))
 	# 背景循环音效：c4（进 C4 开始循环）/ c5_170（进 170+ 开始循环，高等级优先）
-	for kind in ["c4", "c5_170"]:
+	for kind in ["c4", "c5"]:
 		var bp := AudioStreamPlayer.new()
 		bp.bus = GameSettings.BUS_SFX
 		add_child(bp)

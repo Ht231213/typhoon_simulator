@@ -97,8 +97,15 @@ func _flush_tracks(export_dir: String, year: int) -> String:
 			year_tracks.append(t)
 		else:
 			remain.append(t)
-	if year_tracks.is_empty():
+	# 没有任何「有采样点」的台风 → 这年不导出（用户 2026-11-06：空年份不要生成文件）
+	var usable: Array[Dictionary] = []
+	for t2 in year_tracks:
+		if not (t2["samples"] as Array).is_empty():
+			usable.append(t2)
+	if usable.is_empty():
+		tracks = remain
 		return ""
+	year_tracks = usable
 	tracks = remain
 	var path := _pick_file_path(export_dir, year)
 	if _write_file(path, year_tracks, year):
@@ -254,8 +261,11 @@ func _pick_file_path(export_dir: String, for_year: int) -> String:
 	elif not dir.is_absolute_path():
 		dir = _game_root().path_join(dir)
 	DirAccess.make_dir_recursive_absolute(dir)
+	# 用户 2026-11-06：文件名必须带**导出时的系统时间**，否则新开一局会重名
 	var stamp := Time.get_datetime_dict_from_system()
-	var ymd := "%02d%02d%02d" % [int(stamp["year"]) % 100, int(stamp["month"]), int(stamp["day"])]
+	var ymd := "%04d%02d%02dT%02d%02d%02d" % [
+		int(stamp["year"]), int(stamp["month"]), int(stamp["day"]),
+		int(stamp["hour"]), int(stamp["minute"]), int(stamp["second"])]
 	var w := writer()
 	var base: String = w.file_base(dir, ymd, for_year)
 	var ext: String = w.extension

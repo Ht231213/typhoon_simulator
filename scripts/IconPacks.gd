@@ -27,6 +27,14 @@ const SUPPORTED_VERSION := 1
 # ------------------------- 扫描 -------------------------
 
 static func pack_dir() -> String:
+	# ① 外置目录（桌面版：exe 旁的 assets/icons）
+	if not OS.has_feature("editor"):
+		var ext := OS.get_executable_path().get_base_dir().path_join(EXT_DIR)
+		if DirAccess.dir_exists_absolute(ext):
+			return ext
+	# ② 打包进 pck（安卓版 / 桌面版内置）
+	if DirAccess.dir_exists_absolute("res://" + EXT_DIR):
+		return "res://" + EXT_DIR
 	if OS.has_feature("editor"):
 		return ProjectSettings.globalize_path("res://").path_join(EXT_DIR)
 	return OS.get_executable_path().get_base_dir().path_join(EXT_DIR)
@@ -79,7 +87,25 @@ static func load_index(pack: String) -> Dictionary:
 		push_warning("[IconPacks] %s/index.json 解析失败" % pack)
 		return empty
 	var rootd: Dictionary = parsed
-	var version := clampi(int(rootd.get("version", SUPPORTED_VERSION)), 0, 999)
+	# version：整数（只支持该版本）或 [最小, 最大]（支持区间）
+	var version_raw: Variant = rootd.get("version", SUPPORTED_VERSION)
+	var vmin := SUPPORTED_VERSION
+	var vmax := SUPPORTED_VERSION
+	if typeof(version_raw) == TYPE_ARRAY:
+		var arr_v: Array = version_raw
+		if arr_v.size() >= 2:
+			vmin = clampi(int(arr_v[0]), 0, 999)
+			vmax = clampi(int(arr_v[1]), 0, 999)
+			if vmin > vmax:
+				var tmp := vmin
+				vmin = vmax
+				vmax = tmp
+		elif arr_v.size() == 1:
+			vmin = clampi(int(arr_v[0]), 0, 999)
+			vmax = vmin
+	else:
+		vmin = clampi(int(version_raw), 0, 999)
+		vmax = vmin
 	var type := str(rootd.get("type", "advanced")).strip_edges().to_lower()
 	if type == "":
 		type = "advanced"
@@ -109,9 +135,38 @@ static func load_index(pack: String) -> Dictionary:
 				if v2 is String and str(v2) != "" and not table.has(str(k)):
 					table[str(k)] = {"path": str(v2)}
 	var icon_size := float(rootd.get("icon_size", 0.0))
-	var data := {"version": version, "type": type, "icon_size": icon_size, "objects": table}
+	# effect：只有 adv_extend 才认；一个 ID 可以有多条（按 speed 从高到低匹配）
+	var effects: Dictionary = {}
+	var raw_eff: Variant = rootd.get("effect", null)
+	if raw_eff != null:
+		if type != "adv_extend":
+			push_warning("[IconPacks] %s：type=%s 不支持 effect，已忽略" % [pack, type])
+		elif typeof(raw_eff) == TYPE_ARRAY:
+			for item in (raw_eff as Array):
+				if typeof(item) != TYPE_DICTIONARY:
+					continue
+				for eid in (item as Dictionary).keys():
+					var spec: Variant = (item as Dictionary)[eid]
+					if typeof(spec) != TYPE_DICTIONARY:
+						continue
+					var sd: Dictionary = spec
+					var has_color := str(sd.get("color", "")).strip_edges() != ""
+					var has_bright := sd.has("brightness")
+					if not has_color and not has_bright:
+						push_warning("[IconPacks] %s：effect %s 缺 color/brightness，已忽略" % [pack, str(eid)])
+						continue
+					if not effects.has(str(eid)):
+						effects[str(eid)] = []
+					(effects[str(eid)] as Array).append({
+						"speed": float(sd.get("speed", -1.0)),
+						"color": str(sd.get("color", "")),
+						"brightness": float(sd.get("brightness", 0.0)),
+						"gradient": maxf(0.0, float(sd.get("gradient", 0.0))),
+					})
+	var data := {"version": "%d~%d" % [vmin, vmax], "vmin": vmin, "vmax": vmax,
+		"type": type, "icon_size": icon_size, "objects": table, "effects": effects}
 	_index_cache[pack] = {"stamp": stamp, "data": data}
-	print("[IconPacks] index %s：version=%d type=%s 条目=%d" % [pack, version, type, table.size()])
+	print("[IconPacks] index %s：version=%d~%d type=%s 条目=%d effect=%d" % [pack, vmin, vmax, type, table.size(), effects.size()])
 	# type=single 只允许两个 ID（用户 2026-11-06）
 	if type == "single":
 		for eid in table.keys():
@@ -134,15 +189,44 @@ static func icon_size(pack: String) -> float:
 
 
 static func version_of(pack: String) -> int:
-	return int(load_index(pack).get("version", SUPPORTED_VERSION))
+	return int(load_index(pack).get("vmin", SUPPORTED_VERSION))
 
 
 static func type_of(pack: String) -> String:
 	return str(load_index(pack).get("type", "advanced"))
 
 
+## 当前游戏支持的版本是否落在方案声明的 [vmin, vmax] 区间内
 static func version_ok(pack: String) -> bool:
-	return version_of(pack) == SUPPORTED_VERSION
+	var idx := load_index(pack)
+	return SUPPORTED_VERSION >= int(idx.get("vmin", SUPPORTED_VERSION)) \
+		and SUPPORTED_VERSION <= int(idx.get("vmax", SUPPORTED_VERSION))
+
+
+## 某个图标的 effect：**先看图标是否命中**（调用的地方已经用当前图标 ID），
+## 再按 speed 从高到低取第一条 speed ≤ kt；没有 speed 的那条作为兜底。
+## 返回 {} = 没有 effect（不变色）。speed 写错就不生效，不做兜底校验（用户 2026-11-06）。
+static func effect_for(pack: String, id: String, kt: float) -> Dictionary:
+	var idx := load_index(pack)
+	var effs: Dictionary = idx.get("effects", {})
+	if not effs.has(id):
+		return {}
+	var list: Array = effs[id]
+	var best: Dictionary = {}
+	var fallback: Dictionary = {}
+	for e in list:
+		var ed: Dictionary = e
+		var speed := float(ed.get("speed", -1.0))
+		if speed < 0.0:
+			if fallback.is_empty():
+				fallback = ed
+			continue
+		if kt >= speed:
+			if best.is_empty() or speed > float(best.get("speed", -1.0)):
+				best = ed
+	if not best.is_empty():
+		return best
+	return fallback
 
 
 static func objects(pack: String) -> Dictionary:
@@ -170,17 +254,36 @@ static func path_of(pack: String, id: String) -> String:
 	if e.is_empty():
 		return ""
 	var p := pack_root(pack).path_join(str(e["path"]))
+	if p.begins_with("res://"):
+		return p if ResourceLoader.exists(p) else ""
 	return p if FileAccess.file_exists(p) else ""
 
 
-## 取视频（外部文件：VideoStreamTheora.file 直接指磁盘）
+## 统一视频加载：res:// 走 load()（导入资源），外部路径用 VideoStreamTheora.file
+static func _load_video(path: String) -> VideoStream:
+	if path.begins_with("res://"):
+		return load(path) as VideoStream
+	var v := VideoStreamTheora.new()
+	v.file = path
+	return v
+
+
+## 取视频
 static func video(pack: String, id: String) -> VideoStream:
 	var abs := path_of(pack, id)
 	if abs == "":
 		return null
-	var v := VideoStreamTheora.new()
-	v.file = abs
-	return v
+	return _load_video(abs)
+
+
+## 统一图片加载：res:// 走 load()，外部路径走 Image.load
+static func _load_texture(path: String) -> Texture2D:
+	if path.begins_with("res://"):
+		return load(path) as Texture2D
+	var img := Image.new()
+	if img.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(img)
 
 
 ## 取图片（单图方案）
@@ -188,20 +291,24 @@ static func image(pack: String, id: String) -> Texture2D:
 	var abs := path_of(pack, id)
 	if abs == "":
 		return null
-	var img := Image.new()
-	if img.load(abs) != OK:
-		return null
-	return ImageTexture.create_from_image(img)
+	return _load_texture(abs)
 
 
-## 取音频（外部文件：load_from_file）
+## 统一音频加载：res:// 走 load()（已导入），外部路径用 load_from_file
+static func _load_audio(path: String) -> AudioStream:
+	if path.begins_with("res://"):
+		return load(path) as AudioStream
+	var ext := path.get_extension().to_lower()
+	if ext == "ogg":
+		return AudioStreamOggVorbis.load_from_file(path)
+	if ext == "wav":
+		return AudioStreamWAV.load_from_file(path)
+	return null
+
+
+## 取音频
 static func audio(pack: String, id: String) -> AudioStream:
 	var abs := path_of(pack, id)
 	if abs == "":
 		return null
-	var ext := abs.get_extension().to_lower()
-	if ext == "ogg":
-		return AudioStreamOggVorbis.load_from_file(abs)
-	if ext == "wav":
-		return AudioStreamWAV.load_from_file(abs)
-	return null
+	return _load_audio(abs)
