@@ -685,13 +685,11 @@ func _draw_track() -> void:
 		match phase:
 			2:
 				for k in range(1, run.size()):
-					var idx := mini(i - 1 + k, intensities.size() - 1)
-					var seg_kt: float = intensities[idx] if idx >= 0 else 0.0
-					draw_dashed_line(run[k - 1], run[k], Const.ex_track_color(seg_kt),
+					draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0),
 						TRACK_WIDTH, EXTRA_DASH)
 			1:
 				for k in range(1, run.size()):
-					draw_dashed_line(run[k - 1], run[k], TRANSITION_COLOR, TRACK_WIDTH, EXTRA_DASH)
+					draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0), TRACK_WIDTH, EXTRA_DASH)
 			_:
 				var cols := PackedColorArray()
 				for k in range(i, j + 1):
@@ -702,13 +700,11 @@ func _draw_track() -> void:
 
 ## 当前位置的颜色：变性后用白/浅蓝，否则按强度
 func _track_color_at(kt: float, phase: int) -> Color:
-	match phase:
-		2:
-			return Const.ex_track_color(kt)
-		1:
-			return TRANSITION_COLOR
-		_:
-			return Const.track_color(kt)
+	# 用户 2026-11-07：变性中（1）+ 变性后（2）轨迹段**统一纯白**
+	# （不再用 RGB-EX 表，那个表 90 kt 是橙色，用户看橙色不对）
+	if phase >= 1:
+		return Color(1.0, 1.0, 1.0)
+	return Const.track_color(kt)
 
 
 ## 34 kt 风圈的**物理半径**（km）
