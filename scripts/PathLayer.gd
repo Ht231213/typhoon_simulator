@@ -4,7 +4,7 @@ extends Node2D
 ##
 ## 1.2.2 起图标改成「方案包（zip）」系统（用户 2026-11-05 定）：
 ##   · 方案包 = `<游戏目录>/assets/icons/<方案名>.zip`，内含 index.json + mainicon/ landfall/ particle/
-##   · 事件 ID 查表拿到 zip 内相对路径 → 解压到 user:// 缓存 → 播视频（`IconPacks` 负责）
+##   · 事件 ID 查表拿到包内相对路径 → 直接读文件播放（`IconPacks` 负责）
 ##   · 查不到的 ID → **程序化渲染**（画圆 + 等级文字；170+ 扩展档就是这么来的）
 ##   · 换档：0.25 s 叠化 + 相位对齐（同一视频 5.0 s 周期，seek 到相同进度）
 ##
@@ -218,7 +218,8 @@ const EXT_BANDS: Array = [
 
 
 func _icon_kind() -> String:
-	if int(live_phase) >= 2:
+	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
+	if int(live_phase) >= 1:
 		return "ex"
 	var kt := live_intensity
 	if IconPacksLoader.type_of(icon_pack) == "adv_extend":

@@ -339,7 +339,7 @@ func _on_best_track_format_selected(index: int) -> void:
 # ============================ 小工具 ============================
 
 ## 落盘 + 广播。见文件头「落盘」的说明。
-## 模式 / 风季两项不在这里 —— 它们存在 Game 里，本来就不写 user://settings.cfg。
+## 模式 / 风季两项不在这里 —— 它们存在 Game 里，本来就不写 settings.cfg。
 func _persist() -> void:
 	GameSettings.commit()
 	settings_changed.emit()

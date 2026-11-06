@@ -186,7 +186,9 @@ func _physics_process(delta: float) -> void:
 	# ⚠ 阈值 15 kt（1.2.1 由 0.5 改来）：热带低压下限是 17 kt，<15 kt 已经不是
 	#   热带气旋而是残余环流了，没必要继续挂在地图上。
 	#   ⚠ 这条依赖陆地衰减的 Vb 已改成 8 kt —— 旧 Vb=26.7 时强度永远降不到 15，阈值形同虚设。
-	if storm.track_done() or storm.wind_kt <= 15.0:
+	# ⚠ 用户 2026-11-06：变性完成后不能因为风速 <15 kt 就直接消散（那样看不到 EX 图标）。
+	#   温带气旋本来就可能很弱 → 只有「热带/变性中」才用 15 kt 消散判据。
+	if storm.track_done() or (storm.wind_kt <= 15.0 and int(storm.phase) != 2):
 		_finish_storm()
 
 
@@ -803,7 +805,9 @@ func _maybe_auto_deploy() -> void:
 func _on_landfall(storm: Storm) -> void:
 	# 用户 2026-10-31：登陆特效/音效的**最低档是 TD（热带低压）**，L/扰动 不播
 	# （之前按"只要有音效就放"实现得太早，低档扰动登陆也会炸个特效）
-	if int(storm.category) >= Const.CAT_DEPRESSION:
+	# ⚠ 用户 2026-11-06：TD（22~33 kt）登陆**要有视觉特效**（无音效）。
+	#   内部 category 对 22~30 kt 仍算扰动，用 category 判会漏 → 直接按风速 ≥22 kt 判。
+	if storm.wind_kt >= 22.0:
 		path.spawn_landfall_effect(storm.current_world_position(), storm.wind_kt)
 		_play_landfall_sfx(storm)
 	notice.emit("%s 登陆！" % storm.storm_name)

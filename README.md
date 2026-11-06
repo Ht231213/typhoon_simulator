@@ -112,7 +112,7 @@
 ## 五、配置文件
 
 **注意：这类参数和玩家设置是分开的两套。**
-玩家设置（音量、全屏）存在 `user://settings.cfg`，游戏内改就行。
+玩家设置（音量、全屏、方案）存在**游戏目录**的 `settings.cfg`，游戏内改就行。
 
 设计参数在游戏目录的 `config/` 下，**改完重启游戏生效**：
 
@@ -175,7 +175,7 @@ land_decay_tau_mountain2500=9
 - **字体**：**Noto Sans SC Regular**（SIL OFL 1.1）随包分发，在 `project.godot` 的
   `gui/theme/custom_font` 里设为全局默认字体 —— 导出后的 Windows / Web 版**不再依赖系统字体**
   （以前网页版没有系统字体，中文全是豆腐块）
-- **存档**：ACE 排行榜在 `user://ace_records.json`
+- **存档**：ACE 排行榜在**游戏目录** `saves/ace_records.json`
 
 ---
 

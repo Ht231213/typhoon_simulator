@@ -190,7 +190,10 @@ func advance_track(days: float) -> void:
 		return
 	# 一段 = Const.HOURS_PER_SEGMENT 小时 → 折算成天
 	var seg_days: float = Const.HOURS_PER_SEGMENT / 24.0
-	segment_progress += days / seg_days
+	# ⚠ 用户 2026-11-06：变性中/变性后移动明显加速（被西风带带走），
+	#   否则会在 40~50°N 磨蹭很久。转向东北靠玩家的路径点，这里只管速度。
+	var move_boost := 1.75 if phase != Phase.TROPICAL else 1.0
+	segment_progress += days * move_boost / seg_days
 	while segment_progress >= 1.0 and segment < waypoints.size() - 1:
 		segment_progress -= 1.0
 		segment += 1

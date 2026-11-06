@@ -48,6 +48,7 @@ func _sim_track_ids() -> Array[String]:
 
 
 func play_title() -> void:
+	_sim.stop()
 	var st := IconPacks.audio(GameSettings.icon_pack, "music.titlescreen")
 	if st == null:
 		_title.stop()
@@ -57,6 +58,8 @@ func play_title() -> void:
 
 
 func play_sim() -> void:
+	# 用户 2026-11-06：进入模拟场景时标题音乐必须停
+	_title.stop()
 	_last_ty_id = ""
 	_play_next_sim_track()
 

@@ -4,7 +4,7 @@ extends Node
 ## 负责三件事：
 ##   ① 保存「玩家在开始菜单选的设置」，让场景切换后还能读到
 ##   ② 一局模拟里的统计数据（台风战报列表、总 ACE）
-##   ③ 把 ACE 成绩写入本地存档文件（user:// 目录）
+##   ③ 把 ACE 成绩写入游戏目录下的 saves/
 
 # ============================ 设置 ============================
 ## 模拟模式。对应设置界面的下拉框。
@@ -156,35 +156,16 @@ func next_storm_name() -> String:
 
 const SAVE_FILE_NAME := "ace_records.json"
 
-## 存档放游戏目录下的 saves/（用户 2026-11-06：所有写盘都离开 user://）
+## 存档放游戏目录下的 saves/（用户 2026-11-06）
 static func save_path() -> String:
 	var dir := GameSettings.game_dir().path_join("saves")
 	DirAccess.make_dir_recursive_absolute(dir)
 	return dir.path_join(SAVE_FILE_NAME)
 
 
-## 老版本存档在 user://ace_records.json → 第一次启动搬到 saves/（只搬一次）
-static func migrate_old_save() -> void:
-	var dst := save_path()
-	if FileAccess.file_exists(dst):
-		return
-	var old := "user://ace_records.json"
-	if not FileAccess.file_exists(old):
-		return
-	var data := FileAccess.get_file_as_bytes(old)
-	var f := FileAccess.open(dst, FileAccess.WRITE)
-	if f != null:
-		f.store_buffer(data)
-		f.close()
+func save_path_absolute() -> String:
+	return save_path()
 
-## 存档结构：
-## {
-##   "version": 1,
-##   "categories": {
-##     "单台-手动": [ { "saved_at": <unix>, "total_ace": 12.3, "storms": [...] }, ... ],
-##     "单台-自动": [ ... ]
-##   }
-## }
 
 func load_save() -> Dictionary:
 	if not FileAccess.file_exists(save_path()):
@@ -242,8 +223,7 @@ func history(category: String) -> Array:
 	return categories.get(category, [])
 
 
-func save_path_absolute() -> String:
-	return save_path()
+
 
 
 # ============================ 格式化 ============================

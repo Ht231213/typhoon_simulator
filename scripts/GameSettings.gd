@@ -3,7 +3,7 @@ extends Node
 ##
 ## 与 Game.gd 的分工：
 ##   · Game      = 一局模拟的状态（模式、台风数据、ACE 存档）
-##   · GameSettings = 应用设置（音量、全屏、音效预设），存到 user://settings.cfg
+##   · GameSettings = 应用设置（音量、全屏、方案），存到游戏目录的 settings.cfg
 ##
 ## 音频走两个独立总线：
 ##   Music 总线 → 背景音乐
@@ -13,7 +13,7 @@ signal changed
 
 ## 默认设置模板（打包进 pck）。第一次启动复制到游戏目录的 settings.cfg
 const TEMPLATE_PATH := "res://config/settings_default.cfg"
-## 设置文件名（放在**游戏目录**下，用户可直接编辑；不再用 user://）
+## 设置文件名（放在**游戏目录**下，用户可直接编辑）
 const SAVE_FILE_NAME := "settings.cfg"
 ## 方案包扫描（老配置迁移时要用）
 const IconPacksLoader := preload("res://scripts/IconPacks.gd")
