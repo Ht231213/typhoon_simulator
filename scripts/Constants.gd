@@ -328,7 +328,7 @@ const TYPHOON_LAT_LIMIT := 45.0
 ## 海温低于这个值才算具备变性条件（与纬度组成双条件）
 const EXTRATROPICAL_SST_THRESHOLD := 24.0
 ## 变性过程持续多少模拟天（渐变：热带 → 变性中 → 温带气旋）
-const EXTRATROPICAL_TRANSITION_DAYS := 2.0
+const EXTRATROPICAL_TRANSITION_DAYS := 1.0
 ## 「温带 → 热带」回退耗时 = 正向 × 2.5（现实里热带变性比正向变性罕见，
 ## 且比正向慢；用户 2026-10-30 要求可逆，Lead 要求 2~3 倍）
 const EXTRATROPICAL_REVERT_DAYS := EXTRATROPICAL_TRANSITION_DAYS * 2.5

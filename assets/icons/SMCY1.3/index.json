@@ -1,7 +1,7 @@
 {
  "version": 1,
  "type": "adv_extend",
- "icon_size": 100,
+ "icon_size": 130,
  "object": [
   {
    "mainicon.icon.north.x": "mainicon/mainicon_icon_north_x.ogv"

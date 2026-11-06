@@ -596,10 +596,11 @@ func _draw() -> void:
 		var c := _track_color_at(live_intensity, live_phase)
 		# 风圈：内置方案（Default / Advanced default）画；方案包（SMCY 等）不画（用户 2026-10-31）
 		if _builtin_mode > 0:
+			# 先画圆盘，再画风圈 → 风圈在圆盘上面，不会被盖住（用户 2026-11-06）
+			_draw_procedural_icon(c)
 			var ring_r := wind_ring_diameter(live_intensity) * 0.5
 			draw_arc(live_position, ring_r * 0.45, 0.0, TAU, 48, Color(c, 0.5 * _icon_fade), 1.5, true)
 			draw_arc(live_position, ring_r, 0.0, TAU, 72, Color(c, 0.28 * _icon_fade), 1.5, true)
-			_draw_procedural_icon(c)
 		elif _procedural_icon or (_icon_video != null and not _icon_video.visible and not _icon_fading):
 			_draw_procedural_icon(c)
 
@@ -623,7 +624,8 @@ func _draw_procedural_icon(c: Color) -> void:
 		draw_circle(live_position, 6.0, Color(c, _icon_fade))
 		return
 	var d := icon_diameter_for(icon_diameter, live_intensity)
-	var r := d * 0.5
+	# 用户 2026-11-06：Advanced default 的圆盘缩小（0.5→0.41 直径），别盖住最内层风圈
+	var r := d * 0.41
 	draw_circle(live_position, r, Color(c, 0.85 * _icon_fade))
 	draw_arc(live_position, r, 0.0, TAU, 48, Color(1, 1, 1, 0.9 * _icon_fade), 2.0, true)
 	var label := _procedural_label()

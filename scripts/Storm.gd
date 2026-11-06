@@ -190,10 +190,7 @@ func advance_track(days: float) -> void:
 		return
 	# 一段 = Const.HOURS_PER_SEGMENT 小时 → 折算成天
 	var seg_days: float = Const.HOURS_PER_SEGMENT / 24.0
-	# ⚠ 用户 2026-11-06：变性中/变性后移动明显加速（被西风带带走），
-	#   否则会在 40~50°N 磨蹭很久。转向东北靠玩家的路径点，这里只管速度。
-	var move_boost := 1.75 if phase != Phase.TROPICAL else 1.0
-	segment_progress += days * move_boost / seg_days
+	segment_progress += days / seg_days
 	while segment_progress >= 1.0 and segment < waypoints.size() - 1:
 		segment_progress -= 1.0
 		segment += 1
@@ -238,9 +235,14 @@ func _update_pressure() -> void:
 		p = 1013.0 - 0.005 * kt_sq
 	else:
 		p = 1013.0 - 0.0042 * kt_sq
+	# 用户 2026-11-06：C5 以上改用**渐近下限**（不再硬钳）：
+	#   p = 870 + A·exp(-(kt-137)/K)，永远到不了 870，越强下降越慢。
+	#   在 kt=137 处与参考公式连续（参考值 ≈ 934.2 mB）。
+	if wind_kt >= 170.0:
+		# kt=170 处参考公式值 ≈ 891.6 mB，从此出发向 870 渐近（K=110）
+		p = 870.0 + 21.6 * exp(-(wind_kt - 170.0) / 110.0)
 	p = roundf(p)
-	if p < 0.0:
-		p = 0.0
+	p = clampf(p, 871.0, 1010.0)   # 硬边界只保证极端数值不出 0/负数；正常段远高于 871
 	central_pressure = p
 
 
