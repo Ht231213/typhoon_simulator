@@ -1008,7 +1008,7 @@ static func tier_hue_shift(kt: float) -> float:
 	# 只有没有变体的 l / d 保留色相渐变（L→D 变蓝、D→TS 变绿）。
 	const DELTAS: Array = [
 		[15.0, 22.0, -25.0],    # l → d
-		[22.0, 34.0, -124.0],   # d → ts 变绿
+		[22.0, 34.0, -57.0],    # d → ts：到 34 kt 时=青绿（升级瞬间衔接 TS 绿），用户 2026-11-07
 	]
 	for d in DELTAS:
 		if kt >= float(d[0]) and kt < float(d[1]):

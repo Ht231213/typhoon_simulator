@@ -121,19 +121,19 @@
  "effect": [
   {
    "mainicon.icon.north.c5": {
-    "speed": 170,
-    "hue_shift": -50,
-    "gradient": 1.0
+	"speed": 170,
+	"hue_shift": -50,
+	"gradient": 1.0
    }
   },
   {
    "mainicon.bgs.c4": {
-    "gradient": 1.0
+	"gradient": 1.0
    }
   },
   {
    "mainicon.bgs.c5_170": {
-    "gradient": 1.0
+	"gradient": 1.0
    }
   }
  ]
