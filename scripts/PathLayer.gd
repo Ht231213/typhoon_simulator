@@ -242,7 +242,7 @@ func _icon_kind() -> String:
 	#   c2/c3 p<0.5 → c2_minus / c3_minus（上一档配色）
 	#   c4   p>=0.5 → c4_plus（C5 配色）
 	var base_kind := _base_icon_kind()
-	if not GameSettings.tier_variants:
+	if not GameSettings.tier_variants or not IconPacksLoader.has_tier_variants(icon_pack):
 		return base_kind
 	var prog := Const.tier_progress(live_intensity)
 	match base_kind:

@@ -28,7 +28,9 @@ extends Control
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
 ## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
-var pack_option: OptionButton = null
+var pack_button: Button = null
+var pack_popup: PopupPanel = null
+var pack_list: ItemList = null
 ## 扫描到的方案包名（下拉项顺序 = 这个数组）
 var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
@@ -107,9 +109,31 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	pack_option = _add_option_row(page, "方案", "方案包（assets/icons/<名字>.zip）：图标、登陆特效、音效都从里面取")
+	# 方案选择：OptionButton/PopupMenu 在 Godot 4.7 没有「单项文字颜色」，
+	# 但版本不兼容要标黄 → 用 Button + PopupPanel + ItemList（ItemList 支持单项颜色）
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	page.add_child(row)
+	var lbl := Label.new()
+	lbl.custom_minimum_size = Vector2(130, 0)
+	lbl.add_theme_font_size_override("font_size", 19)
+	lbl.text = "方案"
+	row.add_child(lbl)
+	pack_button = Button.new()
+	pack_button.custom_minimum_size = Vector2(200, 44)
+	pack_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	pack_button.add_theme_font_size_override("font_size", 19)
+	pack_button.tooltip_text = "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取"
+	pack_button.pressed.connect(_show_pack_popup)
+	row.add_child(pack_button)
+	pack_popup = PopupPanel.new()
+	pack_popup.visible = false
+	add_child(pack_popup)
+	pack_list = ItemList.new()
+	pack_list.custom_minimum_size = Vector2(240, 60)
+	pack_popup.add_child(pack_list)
+	pack_list.item_selected.connect(_on_pack_selected)
 	_refresh_pack_options()
-	pack_option.item_selected.connect(_on_pack_selected)
 
 	tier_variants_check = CheckBox.new()
 	tier_variants_check.text = "启用等级扩展图标"
@@ -129,23 +153,40 @@ func _build_preset_page() -> void:
 	pages.move_child(pages.get_child(pages.get_child_count() - 1), 0)
 
 
-## 重新扫描方案包并填充下拉（每次打开设置都扫，用户新放 zip 立刻可见）
+## 重新扫描方案包并填充下拉（每次打开设置都扫，用户新放文件夹立刻可见）
 func _refresh_pack_options() -> void:
-	if pack_option == null:
+	if pack_list == null:
 		return
 	_pack_names = GameSettings.pack_options()
-	pack_option.clear()
+	pack_list.clear()
 	for i in _pack_names.size():
 		var name := _pack_names[i]
-		pack_option.add_item(name)
+		pack_list.add_item(name)
 		# version 和游戏不匹配 → 方案名标黄（不弹窗、不报错；内置 Default 不参与）
 		if not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name):
-			pack_option.set_item_custom_fg_color(i, Color(1.0, 0.85, 0.2))
+			pack_list.set_item_custom_fg_color(i, Color(1.0, 0.85, 0.2))
 	if _pack_names.is_empty():
-		pack_option.add_item("（无方案包）")
-		pack_option.disabled = true
-	else:
-		pack_option.disabled = false
+		pack_list.add_item("（无方案包）")
+		pack_list.set_item_disabled(0, true)
+	pack_list.custom_minimum_size = Vector2(240, clampf(_pack_names.size() * 34.0 + 10.0, 44.0, 320.0))
+	var idx := _pack_names.find(GameSettings.icon_pack)
+	if idx >= 0:
+		pack_list.select(idx)
+	_sync_pack_button()
+
+
+func _sync_pack_button() -> void:
+	if pack_button == null:
+		return
+	pack_button.disabled = _pack_names.is_empty()
+	pack_button.text = GameSettings.icon_pack if not _pack_names.is_empty() else "（无方案包）"
+
+
+func _show_pack_popup() -> void:
+	if pack_popup == null or pack_button == null:
+		return
+	pack_popup.position = Vector2i(pack_button.global_position + Vector2(0, pack_button.size.y))
+	pack_popup.popup()
 
 
 ## 当前选中的方案索引（找不到 = 0）
@@ -193,7 +234,6 @@ func open() -> void:
 
 	# 预设页：方案包（每次打开重新扫，能看到用户新放的文件夹）
 	_refresh_pack_options()
-	pack_option.select(_current_pack_index())
 	tier_variants_check.set_pressed_no_signal(GameSettings.tier_variants)
 	tier_variants_check.visible = _tier_variants_available()
 	unit_option.select(clampi(int(GameSettings.wind_unit_index), 0, TyphoonSim.WIND_UNITS.size() - 1))
@@ -237,10 +277,8 @@ func _on_sfx_changed(value: float) -> void:
 
 ## 当前方案是否支持 +/− 变体（内置方案 / single 不显示勾选框）
 func _tier_variants_available() -> bool:
-	if GameSettings.icon_pack == "" or GameSettings.is_builtin_pack(GameSettings.icon_pack):
-		return false
-	var t := IconPacks.type_of(GameSettings.icon_pack)
-	return t == "advanced" or t == "adv_extend"
+	# 只在作者于 index.json 声明 tier_variants=true、且包里真有变体 ID 时显示
+	return IconPacks.has_tier_variants(GameSettings.icon_pack)
 
 
 func _on_tier_variants_toggled(pressed: bool) -> void:
@@ -252,6 +290,9 @@ func _on_pack_selected(index: int) -> void:
 	if index < 0 or index >= _pack_names.size():
 		return
 	GameSettings.set_icon_pack(_pack_names[index])
+	_sync_pack_button()
+	if pack_popup != null:
+		pack_popup.hide()
 	if tier_variants_check != null:
 		tier_variants_check.visible = _tier_variants_available()
 

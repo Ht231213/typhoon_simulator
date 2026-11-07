@@ -22,7 +22,10 @@ extends RefCounted
 
 const EXT_DIR := "assets/icons"
 ## 游戏支持的 index.json 版本（不匹配只标黄，不报错）
-const SUPPORTED_VERSION := 1
+## 游戏端支持的 index.json 版本区间（v1~v3，向下兼容；用户 2026-11-07）
+##   v3 新增可选字段 tier_variants；老包没有 → 默认 false，不影响加载。
+const ICON_PACK_VERSION_MIN := 1
+const ICON_PACK_VERSION_MAX := 3
 
 # ------------------------- 扫描 -------------------------
 
@@ -70,7 +73,7 @@ static var _index_cache: Dictionary = {}
 
 ## 解析结果：{"version": int, "type": String, "objects": {ID: {"path": String}}}
 static func load_index(pack: String) -> Dictionary:
-	var empty := {"version": SUPPORTED_VERSION, "type": "advanced", "objects": {}}
+	var empty := {"version": ICON_PACK_VERSION_MAX, "type": "advanced", "objects": {}}
 	if pack == "":
 		return empty
 	var root := pack_root(pack)
@@ -88,9 +91,9 @@ static func load_index(pack: String) -> Dictionary:
 		return empty
 	var rootd: Dictionary = parsed
 	# version：整数（只支持该版本）或 [最小, 最大]（支持区间）
-	var version_raw: Variant = rootd.get("version", SUPPORTED_VERSION)
-	var vmin := SUPPORTED_VERSION
-	var vmax := SUPPORTED_VERSION
+	var version_raw: Variant = rootd.get("version", ICON_PACK_VERSION_MAX)
+	var vmin := ICON_PACK_VERSION_MAX
+	var vmax := ICON_PACK_VERSION_MAX
 	if typeof(version_raw) == TYPE_ARRAY:
 		var arr_v: Array = version_raw
 		if arr_v.size() >= 2:
@@ -135,6 +138,8 @@ static func load_index(pack: String) -> Dictionary:
 				if v2 is String and str(v2) != "" and not table.has(str(k)):
 					table[str(k)] = {"path": str(v2)}
 	var icon_size := float(rootd.get("icon_size", 0.0))
+	# 作者声明本包有 +/- 变体图标（默认 false；设置里据此决定是否显示勾选框）
+	var tier_variants := bool(rootd.get("tier_variants", false))
 	# effect：只有 adv_extend 才认；一个 ID 可以有多条（按 speed 从高到低匹配）
 	var effects: Dictionary = {}
 	var raw_eff: Variant = rootd.get("effect", null)
@@ -172,6 +177,7 @@ static func load_index(pack: String) -> Dictionary:
 						"gradient": maxf(0.0, float(sd.get("gradient", 0.0))),
 					})
 	var data := {"version": "%d~%d" % [vmin, vmax], "vmin": vmin, "vmax": vmax,
+		"tier_variants": tier_variants,
 		"type": type, "icon_size": icon_size, "objects": table, "effects": effects}
 	_index_cache[pack] = {"stamp": stamp, "data": data}
 	print("[IconPacks] index %s：version=%d~%d type=%s 条目=%d effect=%d" % [pack, vmin, vmax, type, table.size(), effects.size()])
@@ -197,18 +203,21 @@ static func icon_size(pack: String) -> float:
 
 
 static func version_of(pack: String) -> int:
-	return int(load_index(pack).get("vmin", SUPPORTED_VERSION))
+	return int(load_index(pack).get("vmin", ICON_PACK_VERSION_MAX))
 
 
 static func type_of(pack: String) -> String:
 	return str(load_index(pack).get("type", "advanced"))
 
 
-## 当前游戏支持的版本是否落在方案声明的 [vmin, vmax] 区间内
+## 包的版本区间和游戏支持的 [ICON_PACK_VERSION_MIN, ICON_PACK_VERSION_MAX] 是否有交集。
+## 包写整数 v → 区间 [v,v]；包写 [a,b] → 区间 [a,b]。
+## 实测：1 ✓ / 3 ✓ / [1,3] ✓ / 99 ✗（黄色）
 static func version_ok(pack: String) -> bool:
 	var idx := load_index(pack)
-	return SUPPORTED_VERSION >= int(idx.get("vmin", SUPPORTED_VERSION)) \
-		and SUPPORTED_VERSION <= int(idx.get("vmax", SUPPORTED_VERSION))
+	var pmin := int(idx.get("vmin", ICON_PACK_VERSION_MAX))
+	var pmax := int(idx.get("vmax", ICON_PACK_VERSION_MAX))
+	return pmin <= ICON_PACK_VERSION_MAX and pmax >= ICON_PACK_VERSION_MIN
 
 
 ## 某个图标的 effect：**先看图标是否命中**（调用的地方已经用当前图标 ID），
@@ -235,6 +244,20 @@ static func effect_for(pack: String, id: String, kt: float) -> Dictionary:
 	if not best.is_empty():
 		return best
 	return fallback
+
+
+## 作者是否声明「本包有 +/- 变体图标」（index.json 的 tier_variants）
+## ⚠ 声明 true 但实际一个变体 ID 都没有 → warning 并当 false（用户 2026-11-07）
+static func has_tier_variants(pack: String) -> bool:
+	var idx := load_index(pack)
+	if not bool(idx.get("tier_variants", false)):
+		return false
+	var objs: Dictionary = idx.get("objects", {})
+	for id in ["ts_plus", "c2_minus", "c3_minus", "c4_plus"]:
+		if objs.has("mainicon.icon.north." + id):
+			return true
+	push_warning("[IconPacks] %s：声明了 tier_variants=true 但没有任何变体 ID，已按 false 处理" % pack)
+	return false
 
 
 static func objects(pack: String) -> Dictionary:
