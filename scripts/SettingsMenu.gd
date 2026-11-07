@@ -179,7 +179,7 @@ func _sync_pack_button() -> void:
 	if pack_button == null:
 		return
 	pack_button.disabled = _pack_names.is_empty()
-	pack_button.text = GameSettings.icon_pack if not _pack_names.is_empty() else "（无方案包）"
+	pack_button.text = (GameSettings.icon_pack + "  ▼") if not _pack_names.is_empty() else "（无方案包）"
 
 
 func _show_pack_popup() -> void:
