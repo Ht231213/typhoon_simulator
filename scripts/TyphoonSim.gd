@@ -120,6 +120,8 @@ func _physics_process(delta: float) -> void:
 	#    参考在每走完一段之后才 CALL 更新ACE，所以这里也要按段结算。
 	var seg_before := storm.segment
 	storm.advance_track(sim_delta)
+	# ③ 自动模式：路径快用完就向前延伸（用户 2026-11-07）
+	_extend_auto_track(storm)
 	for _i in range(storm.segment - seg_before):
 		storm.settle_segment()
 
@@ -189,17 +191,17 @@ func _physics_process(delta: float) -> void:
 	# ⚠ 阈值 15 kt（1.2.1 由 0.5 改来）：热带低压下限是 17 kt，<15 kt 已经不是
 	#   热带气旋而是残余环流了，没必要继续挂在地图上。
 	#   ⚠ 这条依赖陆地衰减的 Vb 已改成 8 kt —— 旧 Vb=26.7 时强度永远降不到 15，阈值形同虚设。
-	# ⚠ 用户 2026-11-06：变性完成后不能因为风速 <15 kt 就直接消散（那样看不到 EX 图标）。
-	#   温带气旋本来就可能很弱 → 只有「热带/变性中」才用 15 kt 消散判据。
-	# 研究文档 10 号 §6.3：路径走完时若还在变性中 → **先置为已完成 ET 再结束**，
-	# 否则永远到不了 EXTRATROPICAL 状态（用户「不切 EX 直接消散」的直接原因）
-	if storm.track_done() and int(storm.phase) == 1:
+	# ③ 自动模式终止：消散（kt<=0.5）或移出地图；手动模式仍是路径走完
+	var auto_end := auto_mode and (storm.wind_kt <= 0.5 or storm.out_of_map)
+	var track_end := storm.track_done() and (not auto_mode or storm.waypoints.size() >= 600)
+	if track_end and int(storm.phase) == 1:
+		# 研究文档 10 号 §6.3：路径走完时若还在变性中 → 先置 EX 再结束
 		storm.phase = Storm.Phase.EXTRATROPICAL
 		storm.transition_days = 0.0
 		storm.tick_live()
 		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
 		_on_phase_changed(storm, Storm.Phase.TRANSITIONING)
-	if storm.track_done() or storm.wind_kt <= 0.5:
+	if storm.wind_kt <= 0.5 or auto_end or track_end:
 		_finish_storm()
 
 
@@ -613,6 +615,41 @@ func try_deploy() -> bool:
 	_start_storm(pts)
 	return true
 
+
+
+## 自动模式且路径还在延伸时，`track_done` 不应结束台风
+func auto_mode_or_extended() -> bool:
+	return auto_mode
+
+
+## ③ 自动模式：路径点快用完时向前续生成（用户 2026-11-07）
+func _extend_auto_track(storm: Storm) -> void:
+	if not auto_mode or storm == null:
+		return
+	var w := storm.waypoints
+	if w.size() < 2 or w.size() >= 600:
+		return
+	if storm.segment < w.size() - 3:
+		return
+	var last := w[w.size() - 1]
+	var prev := w[w.size() - 2]
+	var dir := last - prev
+	if dir.length() < 0.001:
+		dir = Vector2(0.6, -0.8)
+	dir = dir.normalized()
+	# 纬度越高越向东北偏（西风带引导）
+	var lat := storm.current_lonlat().y
+	var turn := clampf((lat - 25.0) / 25.0, 0.0, 0.6)
+	dir = dir.lerp(Vector2(0.55, -0.83).normalized(), turn).normalized()
+	var step := maxf(last.distance_to(prev), 1.0)
+	var p := last
+	for i in 6:
+		p += dir * step
+		if p.x < 0.0 or p.x > Const.MAP_W or p.y < 0.0 or p.y > Const.MAP_H:
+			storm.out_of_map = true
+			break
+		w.append(p)
+	storm.waypoints = w
 
 ## 自动模式：直接投放下一个（内部仍走 try_deploy 的冷却检查）
 func deploy_auto_storm() -> void:

@@ -23,6 +23,8 @@ enum Phase {
 	EXTRATROPICAL,   ## 已完全变性为温带气旋
 }
 var phase: Phase = Phase.TROPICAL
+## 自动模式延伸路径时，路径点已经移出地图（用于终止）
+var out_of_map := false
 ## 变性中已经过了多少模拟天（用于渐变进度）
 var transition_days := 0.0
 ## 本次变性目标时长（天）：随 B 缩短到 0.5~0.75
