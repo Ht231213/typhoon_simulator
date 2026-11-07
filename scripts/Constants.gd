@@ -1004,15 +1004,11 @@ static func tier_progress(kt: float) -> float:
 ## 档内颜色渐变（用户 2026-11-07）：朝**下一档官方色**（TRACK_COLORS）的色相偏移。
 ## 返回 = p × Δh；p 来自 tier_progress()。x/ST/EX/>=170 kt 的 p=0 → 0。
 static func tier_hue_shift(kt: float) -> float:
+	# 用户 2026-11-07：ts/c2/c3/c4 改用素材里的 +/- 变体图标，不再染色；
+	# 只有没有变体的 l / d 保留色相渐变（L→D 变蓝、D→TS 变绿）。
 	const DELTAS: Array = [
-		[15.0, 22.0, -25.0],    # l → d（手动加强：原 −6 看不出）
+		[15.0, 22.0, -25.0],    # l → d
 		[22.0, 34.0, -124.0],   # d → ts 变绿
-		[34.0, 64.0, -54.0],    # ts → c1 变黄
-		[64.0, 83.0, -17.0],    # c1 → c2
-		[83.0, 97.0, -15.0],    # c2 → c3
-		[97.0, 113.0, -22.0],   # c3 → c4
-		[113.0, 137.0, -67.0],  # c4 → c5
-		[137.0, 170.0, -49.0],  # c5 → 170+（#4020F0 蓝）
 	]
 	for d in DELTAS:
 		if kt >= float(d[0]) and kt < float(d[1]):

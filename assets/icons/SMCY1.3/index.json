@@ -104,24 +104,36 @@
   },
   {
    "particle.note_ts": "particle/particle_note_ts.ogv"
+  },
+  {
+   "mainicon.icon.north.ts_plus": "mainicon/mainicon_icon_north_ts_plus.ogv"
+  },
+  {
+   "mainicon.icon.north.c2_minus": "mainicon/mainicon_icon_north_c2_minus.ogv"
+  },
+  {
+   "mainicon.icon.north.c3_minus": "mainicon/mainicon_icon_north_c3_minus.ogv"
+  },
+  {
+   "mainicon.icon.north.c4_plus": "mainicon/mainicon_icon_north_c4_plus.ogv"
   }
  ],
  "effect": [
   {
    "mainicon.icon.north.c5": {
-	"speed": 170,
-	"hue_shift": -50,
-	"gradient": 1.0
+    "speed": 170,
+    "hue_shift": -50,
+    "gradient": 1.0
    }
   },
   {
    "mainicon.bgs.c4": {
-	"gradient": 1.0
+    "gradient": 1.0
    }
   },
   {
    "mainicon.bgs.c5_170": {
-	"gradient": 1.0
+    "gradient": 1.0
    }
   }
  ]

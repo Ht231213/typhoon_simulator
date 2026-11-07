@@ -232,30 +232,56 @@ func _icon_kind() -> String:
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
 		return "ex"
-	var kt := live_intensity
-	if IconPacksLoader.type_of(icon_pack) == "adv_extend":
-		for band in EXT_BANDS:
-			if kt >= float(band[1]) and IconPacksLoader.has(icon_pack, "mainicon.icon.north." + str(band[0])):
-				_icon_uses_extension = true
-				return str(band[0])
-	_icon_uses_extension = false
-	if kt >= 137.0:
-		return "c5"
-	if kt >= 113.0:
-		return "c4"
-	if kt >= 97.0:
-		return "c3"
-	if kt >= 83.0:
-		return "c2"
-	if kt >= 64.0:
-		return "c1"
-	if kt >= 34.0:
-		return "ts"
-	if kt >= 22.0:
-		return "d"
-	if kt >= 15.0:
-		return "l"
-	return "x"
+	# 用户 2026-11-07：档内进度用素材里的 +/- 变体（+ = 下一档配色，- = 上一档配色）
+	#   ts   p>=0.5 → ts_plus（C1 配色）
+	#   c2/c3 p<0.5 → c2_minus / c3_minus（上一档配色）
+	#   c4   p>=0.5 → c4_plus（C5 配色）
+	var base_kind := _base_icon_kind()
+	var prog := Const.tier_progress(live_intensity)
+	match base_kind:
+		"ts":
+			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.ts_plus"):
+				return "ts_plus"
+		"c2":
+			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c2_minus"):
+				return "c2_minus"
+		"c3":
+			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c3_minus"):
+				return "c3_minus"
+		"c4":
+			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c4_plus"):
+				return "c4_plus"
+	return base_kind
+
+
+
+
+## 基础档位（不含 ST / EX / 变体）
+func _base_icon_kind() -> String:
+		var kt := live_intensity
+		if IconPacksLoader.type_of(icon_pack) == "adv_extend":
+			for band in EXT_BANDS:
+				if kt >= float(band[1]) and IconPacksLoader.has(icon_pack, "mainicon.icon.north." + str(band[0])):
+					_icon_uses_extension = true
+					return str(band[0])
+		_icon_uses_extension = false
+		if kt >= 137.0:
+			return "c5"
+		if kt >= 113.0:
+			return "c4"
+		if kt >= 97.0:
+			return "c3"
+		if kt >= 83.0:
+			return "c2"
+		if kt >= 64.0:
+			return "c1"
+		if kt >= 34.0:
+			return "ts"
+		if kt >= 22.0:
+			return "d"
+		if kt >= 15.0:
+			return "l"
+		return "x"
 
 
 ## 登陆特效 ID（TD 以下没有）
