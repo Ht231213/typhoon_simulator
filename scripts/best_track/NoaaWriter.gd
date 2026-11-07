@@ -104,7 +104,7 @@ func sample_line(s: Dictionary, t: Dictionary, _write_year: int) -> String:
 	# 官方文件里无名台风就是空串；名字统一大写（官方是 HAIYAN / CHOI-WAN 形式）
 	row[C_NAME] = "" if nm == "(nameless)" else nm.to_upper()
 	row[C_ISO_TIME] = "%04d-%02d-%02d %02d:00:00" % [iso_year, date.x, date.y, int(s["hour"])]
-	row[C_NATURE] = _nature(kt, int(s["phase"]))
+	row[C_NATURE] = _nature(kt, int(s["phase"]), bool(s.get("subtype_st", false)))
 	row[C_LAT] = "%.1f" % float(s["lat"])
 	row[C_LON] = "%.1f" % fposmod(float(s["lon"]), 360.0)
 	# 共享块的 WMO 强度：无国家归属，可以填（WMO_AGENCY 那列留空）
@@ -195,7 +195,10 @@ static func _to_180(lon: float) -> float:
 
 
 ## NATURE：弱于 34 kt 的扰动 → DS；变性完成 → ET；其余（含变性中）→ TS
-static func _nature(kt: float, phase: int) -> String:
+static func _nature(kt: float, phase: int, subtype_st := false) -> String:
+	# 副热带段（ST 子状态）→ IBTrACS 的 SS（副热带风暴）
+	if subtype_st:
+		return "SS"
 	if phase == 2:                          # Storm.Phase.EXTRATROPICAL
 		return "ET"
 	if kt < 34.0:

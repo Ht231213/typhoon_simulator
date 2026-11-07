@@ -851,6 +851,7 @@ const NAMING_THRESHOLD_KT := 33.0
 #   类型  0  33 < round(Kt)          → 热带风暴（此时才命名）
 #   类型  1..5  63/82/95/112/136 <   → C1..C5
 const CAT_UNKNOWN := -10          ## 初始值，还没测过强度
+const CAT_SUBTROPICAL := -5       ## 副热带气旋（变性中途的显示子状态，用户 2026-11-07）
 const CAT_EXTRATROPICAL := -4     ## 温带气旋（纬度越过西风带）
 const CAT_WEAK := -3              ## round(Kt) < 19
 const CAT_DISTURBANCE := -2       ## 热带扰动
@@ -986,6 +987,7 @@ static func form_to_category(form: int) -> int:
 ##   EX = 已变性温带气旋（-4）
 static func category_label(cat: int) -> String:
 	match cat:
+		CAT_SUBTROPICAL: return "ST"
 		CAT_EXTRATROPICAL: return "EX"
 		CAT_WEAK, CAT_DISTURBANCE: return "L"
 		CAT_DEPRESSION: return "TD"

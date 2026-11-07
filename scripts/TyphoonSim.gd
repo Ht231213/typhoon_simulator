@@ -178,7 +178,7 @@ func _physics_process(delta: float) -> void:
 	# 参考「计算海区与气压」最后一步：`replace item 对应海区 of 气压数据 with 气压`
 	# 把当前中心气压写进所在格，气压图层才有东西显示。
 	field.set_pressure_at(cell, storm.central_pressure)
-	path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
+	path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 	# 类别与巅峰值连续更新（参考就是在每轮循环里调的）
 	storm.tick_live()
 	_check_category_sfx(storm)
@@ -199,7 +199,7 @@ func _physics_process(delta: float) -> void:
 		storm.phase = Storm.Phase.EXTRATROPICAL
 		storm.transition_days = 0.0
 		storm.tick_live()
-		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
+		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 		_on_phase_changed(storm, Storm.Phase.TRANSITIONING)
 	if storm.wind_kt <= 0.5 or auto_end or track_end:
 		_finish_storm()
@@ -313,6 +313,10 @@ func _wind_delta_rate(storm: Storm) -> float:
 	#    （必须放在 B′ 之后，否则会被 1/(1+Kt/MPI) 稀释掉）。
 	#    `land_sst` 仍然在 ① 里把海温项归零，两者配合。
 	var on_land: bool = storm.landfall or storm.mountain
+
+	# ⑥.5 STC（副热带）段：峰值风缓慢减弱 −1~−2 kt/日（研究文档 11 号）
+	if storm.subtype_st:
+		delta -= 1.5 / float(Const.TICKS_PER_DAY)
 
 	# ⑦ 科氏项
 	delta += coriolis_effect * (storm.wind_kt / 20.0)
@@ -691,7 +695,7 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	storm.northern = storm.latitude > 0.0
 	active_storm = storm
 	path.clear_track()
-	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude)
+	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
 	_prev_category = 999
@@ -722,6 +726,11 @@ func _check_category_sfx(storm: Storm) -> void:
 	if _prev_kt >= 15.0 and kt < 15.0:
 		_play_event_sfx("disperse")
 	_prev_phase = phase
+	# ST 段屏蔽档位音效（避免 CAT -4→-5→-4 误触发强化/减弱）；disperse 已在上面处理
+	if storm.subtype_st or cat == Const.CAT_SUBTROPICAL:
+		_prev_category = cat
+		_prev_kt = kt
+		return
 	if cat == _prev_category:
 		_prev_kt = kt
 		return

@@ -199,6 +199,7 @@ func sample(storm) -> void:
 		# 变性阶段（int(Storm.Phase)：0 热带 / 1 变性中 / 2 温带）。
 		# IBTrACS 的 NATURE 要从这里取；CMA 的 marker 由 CmaWriter 用 (kt, phase) 现算。
 		"phase": int(storm.phase),
+		"subtype_st": bool(storm.subtype_st),
 	})
 
 

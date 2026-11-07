@@ -46,6 +46,8 @@ class StormRecord extends RefCounted:
 	var ace := 0.0
 	var start_day := 0.0
 	var end_day := 0.0
+	## 本局是否出现过副热带子状态（列表显示 ST 用）
+	var reached_st := false
 
 	func to_dict() -> Dictionary:
 		return {
@@ -56,6 +58,7 @@ class StormRecord extends RefCounted:
 			"ace": snappedf(ace, 0.01),
 			"start_day": snappedf(start_day, 0.01),
 			"end_day": snappedf(end_day, 0.01),
+			"reached_st": reached_st,
 		}
 
 ## 本局所有已结束的台风
@@ -238,7 +241,7 @@ static func _pad_display(s: String, width: int) -> String:
 
 ## 台风列表的一行，例如 "C5  03W  Haiyan       170Kt  895mB  ACE19.70"
 static func format_record(rec: StormRecord) -> String:
-	var cat := Const.category_from_wind(rec.peak_wind_kt)
+	var cat := Const.CAT_SUBTROPICAL if rec.reached_st else Const.category_from_wind(rec.peak_wind_kt)
 	var name_part := rec.storm_name if rec.storm_name != "" else "（实际为空）"
 	# ⑰ 用户 2026-11-06：固定列宽对齐（等宽显示）
 	return "%-2s  %-4s  %s %4dKt  %5dmB  ACE %6.2f" % [

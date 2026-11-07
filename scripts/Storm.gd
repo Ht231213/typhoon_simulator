@@ -25,6 +25,12 @@ enum Phase {
 var phase: Phase = Phase.TROPICAL
 ## 自动模式延伸路径时，路径点已经移出地图（用于终止）
 var out_of_map := false
+## 变性中途的副热带子状态（用户 2026-11-07）：不是独立 Phase，只是显示/分类标记
+var subtype_st := false
+var _st_rolled := false
+var _st_decided := false
+## 本场台风是否进入过副热带子状态（记录用，列表显示 ST）
+var reached_st := false
 ## 变性中已经过了多少模拟天（用于渐变进度）
 var transition_days := 0.0
 ## 本次变性目标时长（天）：随 B 缩短到 0.5~0.75
@@ -302,6 +308,16 @@ func update_transition(days: float) -> void:
 					reverting = false
 					transition_days = 0.0
 					transition_target_days = clampf(Const.EXTRATROPICAL_TRANSITION_DAYS - 0.08 * bnorm, 0.15, Const.EXTRATROPICAL_TRANSITION_DAYS)
+					# 副热带子状态：≥TS + 环境落在 JTWC STC 分档（SST 24~26 / 切变 15~30 / 纬 25~40）
+					_st_rolled = false
+					_st_decided = false
+					subtype_st = false
+					if wind_kt >= 34.0 and sst_here >= 24.0 and sst_here <= 26.0 \
+							and shear_display >= 15.0 and shear_display <= 30.0 \
+							and latitude >= 25.0 and latitude <= 40.0:
+						# 出现概率 p_ST = 0.15（研究文档 11 号）
+						_st_rolled = _rng.randf() < 0.15
+						_st_decided = false
 				elif b >= Const.TRANSITION_STRONG_B:
 					# 非锋面 ET / 冷心消散：环境极强但失败 → 仍显示 EX，快速消散
 					phase = Phase.EXTRATROPICAL
@@ -322,6 +338,7 @@ func update_transition(days: float) -> void:
 					phase = Phase.TROPICAL
 					transition_days = 0.0
 					reverting = false
+					subtype_st = false
 			else:
 				if reverting:
 					var progress2 := 1.0 - clampf(transition_days / rev, 0.0, 1.0)
@@ -329,10 +346,22 @@ func update_transition(days: float) -> void:
 					transition_days = progress2 * fwd
 				if b >= Const.TRANSITION_B_KEEP or transition_days > 0.0:
 					transition_days += days
+				# 副热带子状态：变性进度 30%~70% 之间显示 ST
+				var prog := clampf(transition_days / fwd, 0.0, 1.0)
+				if _st_rolled:
+					subtype_st = prog >= 0.30 and prog < 0.70
+					if prog >= 0.70 and not _st_decided:
+						_st_decided = true
+						subtype_st = false
+						# 80% 继续完成温带变性；20% 退回热带（TT，罕见）
+						if _rng.randf() < 0.20:
+							reverting = true
+							transition_days = (1.0 - prog) * rev
 				if transition_days >= fwd:
 					phase = Phase.EXTRATROPICAL
 					transition_days = 0.0
 					reverting = false
+					subtype_st = false
 					_maybe_et_burst()
 		Phase.EXTRATROPICAL:
 			if _tt_conditions_met():
@@ -350,6 +379,10 @@ func _maybe_et_burst() -> void:
 
 
 func _update_category() -> void:
+	if phase == Phase.TRANSITIONING and subtype_st:
+		category = Const.CAT_SUBTROPICAL
+		reached_st = true
+		return
 	if phase != Phase.TROPICAL:
 		category = Const.CAT_EXTRATROPICAL
 		return
@@ -373,6 +406,7 @@ func to_record() -> Game.StormRecord:
 	rec.ace = ace
 	rec.start_day = start_sim_day
 	rec.end_day = end_sim_day
+	rec.reached_st = reached_st
 	return rec
 
 

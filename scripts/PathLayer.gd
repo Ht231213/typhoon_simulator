@@ -42,6 +42,8 @@ var live_intensity := 0.0
 var live_phase := 0                   ## Storm.Phase：0 热带 / 1 变性中 / 2 温带
 ## 当前台风所在海温（℃）与纬度（给程序化渲染/未来配色用）
 var live_sst := -1.0
+## 变性中途的副热带子状态（显示 ST）
+var live_subtype_st := false
 var live_lat := 999.0
 ## 隐藏时同步收掉图标（`TyphoonSim` 里有两处直接 `path.live_visible = false`）
 var live_visible := false:
@@ -163,12 +165,13 @@ func clear_track() -> void:
 	queue_redraw()
 
 
-func set_live_position(world_pos: Vector2, kt: float, phase := 0, sst := -1.0, lat := 999.0) -> void:
+func set_live_position(world_pos: Vector2, kt: float, phase := 0, sst := -1.0, lat := 999.0, st := false) -> void:
 	live_position = world_pos
 	live_intensity = kt
 	live_phase = phase
 	live_sst = sst
 	live_lat = lat
+	live_subtype_st = st
 	live_visible = true
 	_update_icon()
 	# 拉开足够距离才记录，避免高频调用堆出上万个点。
@@ -223,6 +226,9 @@ const EXT_BANDS: Array = [
 
 
 func _icon_kind() -> String:
+	# 副热带子状态：优先用 ss 图标（包内没有 → 程序化渲染兜底）
+	if live_subtype_st:
+		return "ss"
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
 		return "ex"
@@ -660,6 +666,8 @@ func _draw_procedural_icon(c: Color) -> void:
 
 
 func _procedural_label() -> String:
+	if live_subtype_st:
+		return "ST"
 	if live_intensity >= 155.0:
 		return "%d" % int(roundf(live_intensity))
 	return Const.category_short(Const.category_from_wind(live_intensity))
