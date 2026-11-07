@@ -346,6 +346,7 @@ func _update_icon() -> void:
 	_icon_video.position = live_position - Vector2(d, d) * 0.5
 	_icon_video.visible = true
 	_reset_tint_target()
+	_update_tier_bright_target()
 	_apply_video_tint()
 	_apply_video_alpha()
 	queue_redraw()
@@ -420,6 +421,9 @@ static func icon_diameter_for(base: float, kt: float) -> float:
 var _tint_shown := Color.WHITE
 var _tint_target := Color.WHITE
 var _tint_gradient := 0.0
+## 档内颜色渐变（用户 2026-11-07）：目标与平滑值（度）
+var _tier_hue_target := 0.0
+var _tier_hue_shown := 0.0
 ## 色相旋转（度）当前/目标/过渡时长
 var _hue_shown := 0.0
 var _hue_target := 0.0
@@ -465,6 +469,7 @@ func _apply_video_tint() -> void:
 		if p != null and p.material is ShaderMaterial:
 			(p.material as ShaderMaterial).set_shader_parameter("tint", _tint_shown)
 			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown)
+			(p.material as ShaderMaterial).set_shader_parameter("tier_hue_deg", _tier_hue_shown)
 
 
 func _apply_video_alpha() -> void:
@@ -473,6 +478,15 @@ func _apply_video_alpha() -> void:
 		_icon_video.modulate = Color(1, 1, 1, clampf(a, 0.0, 1.0))
 	if _icon_video_prev != null:
 		_icon_video_prev.modulate = Color(1, 1, 1, clampf(_video_fade * _icon_fade, 0.0, 1.0))
+
+
+## 档内颜色渐变（只对 advanced/adv_extend 的视频图标；single/内置不生效）
+func _update_tier_bright_target() -> void:
+	var t := IconPacksLoader.type_of(icon_pack)
+	if t != "advanced" and t != "adv_extend":
+		_tier_hue_target = 0.0
+		return
+	_tier_hue_target = Const.tier_hue_shift(live_intensity)
 
 
 func _advance_video_fade(delta: float) -> void:
@@ -510,6 +524,13 @@ func _hide_icon() -> void:
 
 func _process(delta: float) -> void:
 	_advance_video_fade(delta)
+	# 档内颜色平滑（0.25 s，避免跨档时闪一下）
+	if absf(_tier_hue_shown - _tier_hue_target) > 0.05:
+		_tier_hue_shown = lerpf(_tier_hue_shown, _tier_hue_target, minf(1.0, delta / 0.25))
+		if absf(_tier_hue_shown - _tier_hue_target) <= 0.05:
+			_tier_hue_shown = _tier_hue_target
+		_apply_video_tint()
+
 	# effect 的 gradient：每帧向目标色线性逼近（用户 2026-11-06）
 	var tint_diff := not _tint_shown.is_equal_approx(_tint_target)
 	var hue_diff := absf(_hue_shown - _hue_target) > 0.01

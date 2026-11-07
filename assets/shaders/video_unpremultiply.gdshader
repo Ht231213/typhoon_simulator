@@ -15,6 +15,8 @@ render_mode blend_premul_alpha;
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 // 色相旋转（度）：保持饱和度和亮度，白色像素（低饱和）不受影响
 uniform float hue_shift_deg : hint_range(-180.0, 180.0) = 0.0;
+// 档内颜色渐变（用户 2026-11-07）：朝下一档官方色的色相偏移（度），叠加在 hue_shift 之后
+uniform float tier_hue_deg : hint_range(-180.0, 180.0) = 0.0;
 // 额外整体透明度（叠加在 modulate 的 alpha 上，用于淡入淡出/叠化）
 uniform float fade : hint_range(0.0, 1.0) = 1.0;
 
@@ -45,6 +47,12 @@ void fragment() {
 		vec3 hsv = rgb2hsv(rgb);
 		hsv.x = fract(hsv.x + hue_shift_deg / 360.0);
 		rgb = hsv2rgb(hsv);
+	}
+	// 顺序：反预乘 → tint → effect hue_shift → 档内颜色渐变（最后）
+	if (abs(tier_hue_deg) > 0.001) {
+		vec3 hsv2 = rgb2hsv(rgb);
+		hsv2.x = fract(hsv2.x + tier_hue_deg / 360.0);
+		rgb = hsv2rgb(hsv2);
 	}
 	float out_a = a * fade * COLOR.a;   // COLOR 此时是 modulate
 	COLOR = vec4(rgb * out_a, out_a);
