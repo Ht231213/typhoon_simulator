@@ -73,6 +73,8 @@ var _builtin_mode := 1
 var _icon_tier := ""                  ## 当前档位/事件 ID 的短名（调试/测试用）
 ## 当前图标是否用了「玩家自定义扩展档位」（用了就不再做 170+ 渲染变色）
 var _icon_uses_extension := false
+## 上次生效的「等级扩展图标」开关（变了要重建图标）
+var _tier_variants_cache := true
 
 # ------------------------- 其它特效播放器 -------------------------
 var _landfall_video: VideoStreamPlayer = null
@@ -91,6 +93,7 @@ var landfall_effects: Array[Dictionary] = []
 
 func _ready() -> void:
 	icon_pack = GameSettings.icon_pack
+	_tier_variants_cache = GameSettings.tier_variants
 	icon_diameter = ICON_DIAMETER_FALLBACK
 	# 播放器都在图标之前创建：z 相同（1）时按树序绘制 → 特效在图标下面、底图上面
 	_landfall_video = _make_video("LandfallEffectVideo")
@@ -134,7 +137,9 @@ func _make_video(node_name: String) -> VideoStreamPlayer:
 
 ## 设置里换了方案 → 停掉旧的、按新方案重建
 func _on_settings_changed() -> void:
-	if GameSettings.icon_pack == icon_pack:
+	var variants_changed := GameSettings.tier_variants != _tier_variants_cache
+	_tier_variants_cache = GameSettings.tier_variants
+	if GameSettings.icon_pack == icon_pack and not variants_changed:
 		return
 	icon_pack = GameSettings.icon_pack
 	_apply_pack_icon_size()
@@ -237,6 +242,8 @@ func _icon_kind() -> String:
 	#   c2/c3 p<0.5 → c2_minus / c3_minus（上一档配色）
 	#   c4   p>=0.5 → c4_plus（C5 配色）
 	var base_kind := _base_icon_kind()
+	if not GameSettings.tier_variants:
+		return base_kind
 	var prog := Const.tier_progress(live_intensity)
 	match base_kind:
 		"ts":

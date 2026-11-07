@@ -32,6 +32,8 @@ var pack_option: OptionButton = null
 ## 扫描到的方案包名（下拉项顺序 = 这个数组）
 var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
+## 「启用等级扩展图标」勾选框（用户 2026-11-07）
+var tier_variants_check: CheckBox = null
 
 ## 关闭时的回调（由打开方注入）
 var on_closed: Callable = Callable()
@@ -109,6 +111,15 @@ func _build_preset_page() -> void:
 	_refresh_pack_options()
 	pack_option.item_selected.connect(_on_pack_selected)
 
+	tier_variants_check = CheckBox.new()
+	tier_variants_check.text = "启用等级扩展图标"
+	tier_variants_check.custom_minimum_size = Vector2(200, 44)
+	tier_variants_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	tier_variants_check.add_theme_font_size_override("font_size", 19)
+	tier_variants_check.tooltip_text = "使用素材里的 +/- 变体图标（只在 advanced / adv_extend 方案可用）"
+	tier_variants_check.toggled.connect(_on_tier_variants_toggled)
+	page.add_child(tier_variants_check)
+
 	unit_option = _add_option_row(page, "单位", "风速显示单位")
 	for unit in TyphoonSim.WIND_UNITS:
 		unit_option.add_item(unit)
@@ -183,6 +194,8 @@ func open() -> void:
 	# 预设页：方案包（每次打开重新扫，能看到用户新放的文件夹）
 	_refresh_pack_options()
 	pack_option.select(_current_pack_index())
+	tier_variants_check.set_pressed_no_signal(GameSettings.tier_variants)
+	tier_variants_check.visible = _tier_variants_available()
 	unit_option.select(clampi(int(GameSettings.wind_unit_index), 0, TyphoonSim.WIND_UNITS.size() - 1))
 
 	# 回到第一个选项卡。用 tab_count 判断，避免标签还没同步时报越界
@@ -222,11 +235,25 @@ func _on_sfx_changed(value: float) -> void:
 	_refresh_volume_labels()
 
 
+## 当前方案是否支持 +/− 变体（内置方案 / single 不显示勾选框）
+func _tier_variants_available() -> bool:
+	if GameSettings.icon_pack == "" or GameSettings.is_builtin_pack(GameSettings.icon_pack):
+		return false
+	var t := IconPacks.type_of(GameSettings.icon_pack)
+	return t == "advanced" or t == "adv_extend"
+
+
+func _on_tier_variants_toggled(pressed: bool) -> void:
+	GameSettings.set_tier_variants(pressed)
+
+
 ## 方案包：立即生效 + 落盘
 func _on_pack_selected(index: int) -> void:
 	if index < 0 or index >= _pack_names.size():
 		return
 	GameSettings.set_icon_pack(_pack_names[index])
+	if tier_variants_check != null:
+		tier_variants_check.visible = _tier_variants_available()
 
 
 ## 风速单位：只影响显示，立即落盘
