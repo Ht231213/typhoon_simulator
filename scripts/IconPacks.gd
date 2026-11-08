@@ -141,6 +141,8 @@ static func load_index(pack: String) -> Dictionary:
 	# 作者声明本包有 +/- 变体图标（默认 false；设置里据此决定是否显示勾选框）
 	var tier_variants := bool(rootd.get("tier_variants", false))
 	# effect：只有 adv_extend 才认；一个 ID 可以有多条（按 speed 从高到低匹配）
+	# 图标 ID 的条目还可带可选字段 "bgs"：该图标显示时循环播放哪个背景音效事件 ID
+	# （用户 2026-11-08：音效像 effect 标签一样绑到图标 ID，游戏端不再按 phase 判断）
 	var effects: Dictionary = {}
 	var raw_eff: Variant = rootd.get("effect", null)
 	if raw_eff != null:
@@ -160,11 +162,12 @@ static func load_index(pack: String) -> Dictionary:
 					var has_hue := sd.has("hue_shift")
 					var is_bgs := str(eid).begins_with("mainicon.bgs.")
 					var has_gradient := sd.has("gradient")
+					var has_bgs_field := str(sd.get("bgs", "")).strip_edges() != ""
 					if is_bgs and has_gradient:
 						# bgs 只允许 gradient；出现 color/brightness/hue_shift → warning 并忽略
 						if has_color or has_bright or has_hue:
 							push_warning("[IconPacks] %s：bgs 条目只能带 gradient，其它字段已忽略：%s" % [pack, str(eid)])
-					elif not has_color and not has_bright and not has_hue:
+					elif not has_color and not has_bright and not has_hue and not has_bgs_field:
 						push_warning("[IconPacks] %s：effect %s 缺 color/brightness，已忽略" % [pack, str(eid)])
 						continue
 					if not effects.has(str(eid)):
@@ -175,6 +178,7 @@ static func load_index(pack: String) -> Dictionary:
 						"brightness": float(sd.get("brightness", 0.0)),
 						"hue_shift": float(sd.get("hue_shift", 0.0)),
 						"gradient": maxf(0.0, float(sd.get("gradient", 0.0))),
+						"bgs": str(sd.get("bgs", "")).strip_edges(),
 					})
 	var data := {"version": "%d~%d" % [vmin, vmax], "vmin": vmin, "vmax": vmax,
 		"tier_variants": tier_variants,

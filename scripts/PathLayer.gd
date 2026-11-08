@@ -232,6 +232,29 @@ func current_icon_id() -> String:
 	return "mainicon.icon.north.%s" % _icon_kind()
 
 
+## 当前图标应循环播放的**背景音效事件 ID**（"" = 静音）。
+## 用户 2026-11-08：音效像 effect 标签一样**绑到图标 ID 上**，游戏端不再判断 phase。
+##   方案包 index.json 的 effect 条目里，图标 ID 可以带可选字段 "bgs": "<事件 ID>"，
+##   例如 {"mainicon.icon.north.c4": {"speed": 113, "bgs": "mainicon.bgs.c4"}}。
+##   · 变体图标（c4_plus / c3_minus…）通常没有单独声明 → 落回**基础档位 ID** 再查一次
+##   · EX / ST 等非档位图标：基础档位与当前图标不同档 → 查不到 → 静音
+##     （这正是「温带气旋不播 C4 背景音」的实现方式：EX 图标没有 bgs 声明）
+func current_bgs_id() -> String:
+	if icon_pack == "" or _detect_builtin() > 0:
+		return ""
+	var kind := _icon_kind()
+	var base := _base_icon_kind()
+	var e := IconPacksLoader.effect_for(icon_pack, "mainicon.icon.north." + kind, live_intensity)
+	var id := str(e.get("bgs", ""))
+	if id != "":
+		return id
+	# 变体图标落回基础档位（"c4_plus" → "c4"）；"ex"/"ss" 不会命中这个前缀条件
+	if kind != base and kind.begins_with(base):
+		e = IconPacksLoader.effect_for(icon_pack, "mainicon.icon.north." + base, live_intensity)
+		return str(e.get("bgs", ""))
+	return ""
+
+
 ## 扩展档位（从高到低）：只有 zip 里确实存在该 ID 时才采用
 const EXT_BANDS: Array = [
 	["c5_300", 300.0], ["c5_250", 250.0], ["c5_200", 200.0], ["c5_170", 170.0], ["c5_155", 155.0],
@@ -807,8 +830,12 @@ func _draw_track() -> void:
 		var seg_start := 0
 		for k in range(1, smooth.size()):
 			if cols[k] != cols[k - 1]:
-				_draw_color_run(smooth, cols, seg_start, k - 1, dashed_i)
-				seg_start = k - 1
+				# ⚠ seg_start 必须推进到 **k**（不是 k-1）：
+				#   _draw_color_run 用 cols[from_i] 当整段颜色，若从 k-1 开始，
+				#   新色段会沿用上一段的旧颜色（EX 灰→黄整段变灰的根因）。
+				#   旧色段画到 k（重叠 1 个采样点防断口），新色段从 k 开始。
+				_draw_color_run(smooth, cols, seg_start, k, dashed_i)
+				seg_start = k
 		_draw_color_run(smooth, cols, seg_start, smooth.size() - 1, dashed_i)
 		i = j + 1
 

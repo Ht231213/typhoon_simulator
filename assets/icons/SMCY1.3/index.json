@@ -14,6 +14,9 @@
    "mainicon.icon.north.ex": "mainicon/mainicon_icon_north_ex.ogv"
   },
   {
+   "mainicon.icon.north.ss": "mainicon/mainicon_icon_north_ss.ogv"
+  },
+  {
    "mainicon.icon.north.d": "mainicon/mainicon_icon_north_d.ogv"
   },
   {
@@ -121,10 +124,23 @@
  ],
  "effect": [
   {
+   "mainicon.icon.north.c4": {
+	"speed": 113,
+	"bgs": "mainicon.bgs.c4"
+   }
+  },
+  {
+   "mainicon.icon.north.c5": {
+	"speed": 137,
+	"bgs": "mainicon.bgs.c4"
+   }
+  },
+  {
    "mainicon.icon.north.c5": {
 	"speed": 170,
 	"hue_shift": -50,
-	"gradient": 1.0
+	"gradient": 1.0,
+	"bgs": "mainicon.bgs.c5_170"
    }
   },
   {

@@ -46,13 +46,13 @@ var _sfx_players: Array[AudioStreamPlayer] = []
 ## 事件音效（2026-10-30）：form 形成 / intensify 增强 / weaken 减弱 / dissipate 消散
 ## 素材目前没有（SMCY 库只有 landfall 音效）→ 播放器建好但没有 stream = 静音，以后放素材自动生效
 ## 事件音效种类 → 方案包 ID（见 event_sound_id；没有素材就静音）
-## 一次性事件音效（背景循环音效单独处理：c4 / c5_170）
+## 一次性事件音效（背景循环音效单独处理：mainicon.bgs.*）
 const EVENT_SFX_KINDS: Array[String] = ["ts", "suty", "disperse", "eri"]
-## 背景音效（bgs）ID：只有这两个用渐强/渐弱
-const BGS_IDS := {"c4": "mainicon.bgs.c4", "c5_170": "mainicon.bgs.c5_170"}
+## 背景循环音效（bgs）：**绑定到图标 ID**（方案包 index.json 的 effect.bgs 声明），
+## 播放器按方案包里所有 mainicon.bgs.* 动态建立，见 _setup_sfx。
 ## 一次性事件音效播放器
 var _event_players: Dictionary = {}
-## 背景循环音效播放器（c4 / c5_170，高等级优先）
+## 背景循环音效播放器（key = 完整事件 ID，如 "mainicon.bgs.c4"）
 var _bg_players: Dictionary = {}
 ## 事件音效冷却（毫秒）：防止档位在边界来回抖导致"滴滴滴"
 const EVENT_SFX_COOLDOWN_MS := 2000
@@ -773,7 +773,9 @@ func _check_particle_events(storm: Storm, prev: int, cat: int) -> void:
 		_cat_hist.clear()          # 同一波只放一次
 
 
-## 事件音效 kind → 方案包内事件 ID（docs/图标方案-ZIP格式规范.md §六）
+## 一次性事件音效 kind → 方案包内事件 ID（docs/图标方案-ZIP格式规范.md §六）
+## ⚠ 背景循环音效（bgs）不在这里：它按「图标 ID 的 effect.bgs 声明」动态解析，
+##    见 PathLayer.current_bgs_id() / _update_background_sfx()。
 static func event_sound_id(kind: String) -> String:
 	match kind:
 		"eri":
@@ -784,10 +786,6 @@ static func event_sound_id(kind: String) -> String:
 			return "mainicon.sound.suty"
 		"disperse":
 			return "mainicon.sound.disperse"
-		"c4":
-			return "mainicon.bgs.c4"
-		"c5_170":
-			return "mainicon.bgs.c5_170"
 	return ""
 
 
@@ -799,21 +797,19 @@ func _stop_background_sfx() -> void:
 			p.stop()
 
 
-## 背景循环音效（用户 2026-11-05 更正）：
-##   C4（113~136 kt）→ 循环 mainicon.sound.c4
-##   ≥170 kt        → 循环 mainicon.sound.c5_170
-##   137~169（C5）  → 素材没有背景音，静音
-##   其余            → 静音
-## ⚠ 两个区间**互斥**（中间隔着 C5），不需要优先级判断。
-func _update_background_sfx(kt: float, _cat: int) -> void:
-	var wants_c4 := kt >= 113.0 and kt < 170.0
-	var wants_c5_170 := kt >= 170.0
+## 背景循环音效（用户 2026-11-08 最终规则）：**音效绑到图标 ID**。
+##   · 播哪个 = 方案包 index.json 里「当前图标 ID」的 effect.bgs 声明
+##     （见 PathLayer.current_bgs_id；SMCY1.3 里 c4 图标→bgs.c4、c5 图标 137~169→bgs.c4、≥170→bgs.c5_170）
+##   · 当前显示 EX / ST / 其它非档位图标 → 没有 bgs 声明 → 完全静音（清单 C11）
+##   · 不再判断 phase：图标系统本身已按 phase 切 ex/ss，音效跟着实际显示的图标走即可。
+func _update_background_sfx(_kt: float, _cat: int) -> void:
+	var want_id := path.current_bgs_id()
 	for kind in _bg_players.keys():
 		var p := _bg_players[kind] as AudioStreamPlayer
 		if p == null or p.stream == null:
 			continue
-		var want := wants_c5_170 if kind == "c5_170" else wants_c4
-		var grad := _bgs_gradient(kind)
+		var want: bool = want_id != "" and str(kind) == want_id
+		var grad := _bgs_gradient(str(kind))
 		if want and not p.playing:
 			_fade_in(p, grad)
 		elif not want and p.playing:
@@ -825,12 +821,11 @@ const SFX_FADE_SECONDS := 1.0
 const SFX_FADE_LOW_DB := -40.0
 
 
-func _bgs_gradient(kind: String) -> float:
-	var pack := GameSettings.icon_pack
-	var id: String = BGS_IDS.get(kind, "")
+## bgs 的淡入淡出时长（effect.gradient；按**完整事件 ID** 查，默认 1 秒）
+func _bgs_gradient(id: String) -> float:
 	if id == "":
 		return 1.0
-	var e := IconPacks.effect_for(pack, id, 1e9)   # bgs 的 effect 不带 speed
+	var e := IconPacks.effect_for(GameSettings.icon_pack, id, 1e9)   # bgs 的 effect 不带 speed
 	var g := float(e.get("gradient", 1.0))
 	return g if g > 0.0 else 1.0
 
@@ -947,16 +942,21 @@ func _setup_sfx() -> void:
 		add_child(player)
 		_sfx_players.append(player)
 		player.stream = IconPacks.audio(GameSettings.icon_pack, GameSettings.landfall_sound_id(i))
-	# 背景循环音效：c4（进 C4 开始循环）/ c5_170（进 170+ 开始循环，高等级优先）
-	for kind in ["c4", "c5_170"]:
+	# 背景循环音效：**方案包里所有 mainicon.bgs.* 都建一个循环播放器**，
+	# 播哪个由「当前图标 ID 的 effect.bgs 声明」决定（用户 2026-11-08）。
+	# 这样音效跟图标走：EX/ST 图标没有 bgs 声明 → 自动静音，不需要 phase 判断。
+	for obj_id in IconPacks.objects(GameSettings.icon_pack).keys():
+		var bgs_id := str(obj_id)
+		if not bgs_id.begins_with("mainicon.bgs."):
+			continue
 		var bp := AudioStreamPlayer.new()
 		bp.bus = GameSettings.BUS_SFX
 		add_child(bp)
-		var st := IconPacks.audio(GameSettings.icon_pack, event_sound_id(kind))
+		var st := IconPacks.audio(GameSettings.icon_pack, bgs_id)
 		if st is AudioStreamOggVorbis:
 			(st as AudioStreamOggVorbis).loop = true
 		bp.stream = st
-		_bg_players[kind] = bp
+		_bg_players[bgs_id] = bp
 
 
 ## 切换到方案包后重建播放器。由 GameSettings.changed 信号触发。
