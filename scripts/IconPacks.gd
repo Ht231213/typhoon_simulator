@@ -25,7 +25,7 @@ const EXT_DIR := "assets/icons"
 ## 游戏端支持的 index.json 版本区间（v1~v3，向下兼容；用户 2026-11-07）
 ##   v3 新增可选字段 tier_variants；老包没有 → 默认 false，不影响加载。
 const ICON_PACK_VERSION_MIN := 1
-const ICON_PACK_VERSION_MAX := 3
+const ICON_PACK_VERSION_MAX := 4
 
 # ------------------------- 扫描 -------------------------
 
