@@ -24,7 +24,9 @@ const LANDFALL_VIDEO_DIAMETER := 150.0
 const FX_ERI_SIZE := 170.0
 const FX_NOTE_TS_SIZE := 140.0
 ## 换档叠化时长
-const VIDEO_FADE_SECONDS := 0.25
+## ⚠ 用户 2026-11-08：升级特效/音效在 34 kt 那一 tick 立刻触发（实测图标 ID 也是同 tick 切换），
+## 但 0.25 s 叠化让旧图标还明显可见 → 感觉「图标晚到」。缩到 0.10 s 与特效同步。
+const VIDEO_FADE_SECONDS := 0.10
 ## 视频图标的相位周期：素材实测 5.0 秒一圈，换档时按这个取模对齐
 const VIDEO_PHASE_SECONDS := 5.0
 ## 消散淡出时长
