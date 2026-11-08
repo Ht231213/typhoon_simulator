@@ -37,6 +37,9 @@ var idle_boost := false
 var clamp_at_year_end := false
 
 var _day_accumulator := 0.0
+## 暂停时间轴时的冻结季节海温（第一次用到时捕获，解冻后失效）
+var _frozen_amp := 0.0
+var _frozen_valid := false
 
 
 ## 当前速度：每「天」需要多少真实秒。值来自 `config/simulation.cfg`
@@ -59,6 +62,12 @@ func sim_days() -> float:
 ## 放在同一个时基上就永远是自洽的。
 func _physics_process(delta: float) -> void:
 	if not running:
+		return
+
+	# 暂停时间轴（2026-11-08）：日历不推进，但仍广播 clock_ticked 让 UI 刷新。
+	# 台风移动/增强用的是 days_from_seconds()（物理时间），不受这里影响。
+	if GameSettings.pause_timeline:
+		clock_ticked.emit()
 		return
 
 	_day_accumulator += delta
@@ -145,5 +154,13 @@ func is_idle_speed() -> bool:
 ##   （GameSettings.seasonal_amplitude / mean_sst，出厂默认值来自 Const）。
 ##   每次现取，所以改设置后立刻生效，不用重启。
 func seasonal_sst_amplitude() -> float:
-	return sin(deg_to_rad((month - 5) * 30.0)) * GameSettings.seasonal_amplitude \
+	var amp := sin(deg_to_rad((month - 5) * 30.0)) * GameSettings.seasonal_amplitude \
 		+ (GameSettings.mean_sst - 30.0)
+	if GameSettings.pause_timeline:
+		# 冻结在开启那一刻的值；解冻后恢复正常计算
+		if not _frozen_valid:
+			_frozen_amp = amp
+			_frozen_valid = true
+		return _frozen_amp
+	_frozen_valid = false
+	return amp

@@ -97,6 +97,9 @@ var wind_unit_index := 0
 # ------------------------- 图标方案包（2026-11-05）-------------------------
 ## 启用「等级扩展图标」（+/- 变体）：默认开（用户 2026-11-07 要求做成游戏内勾选框）。
 var tier_variants := true
+## 暂停时间轴（2026-11-08）：日期/月份不推进、季节海温冻结；台风照常运行。
+## ⚠ 放在「环境参数」里算作弊项：冻结季节变化会改变难度。
+var pause_timeline := false
 ## 当前选中的方案包名（= `assets/icons/<名字>.zip` 的文件名，不含扩展名）。
 ## "" = 不用方案包（全部程序化渲染）。
 var icon_pack := DEFAULT_PACK
@@ -116,6 +119,14 @@ func pack_options() -> Array[String]:
 ## 是不是内置方案（内置方案不读 zip / 不走 type）
 static func is_builtin_pack(name: String) -> bool:
 	return BUILTIN_PACKS.has(name)
+
+
+func set_pause_timeline(enabled: bool) -> void:
+	if enabled == pause_timeline:
+		return
+	pause_timeline = enabled
+	_save()
+	changed.emit()
 
 
 func set_tier_variants(enabled: bool) -> void:
@@ -270,6 +281,7 @@ func _save() -> void:
 	cfg.set_value("video", "fullscreen", fullscreen)
 	cfg.set_value("video", "icon_pack", icon_pack)
 	cfg.set_value("video", "tier_variants", tier_variants)
+	cfg.set_value("sim", "pause_timeline", pause_timeline)
 	# 模拟设置
 	cfg.set_value("sim", "mean_sst", mean_sst)
 	cfg.set_value("sim", "seasonal_amplitude", seasonal_amplitude)
@@ -315,6 +327,7 @@ func _load() -> void:
 	var packs := IconPacksLoader.pack_names()
 	icon_pack = saved_pack if (is_builtin_pack(saved_pack) or packs.has(saved_pack)) else DEFAULT_PACK
 	tier_variants = bool(cfg.get_value("video", "tier_variants", tier_variants))
+	pause_timeline = bool(cfg.get_value("sim", "pause_timeline", pause_timeline))
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)
 	seasonal_amplitude = clampf(

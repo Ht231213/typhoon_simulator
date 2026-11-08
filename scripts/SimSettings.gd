@@ -45,6 +45,8 @@ const ROW_FONT_SIZE := 19
 @onready var record_disturbances_check: CheckBox = %RecordDisturbancesCheck
 @onready var best_track_check: CheckBox = %BestTrackCheck
 @onready var best_track_format_option: OptionButton = %BestTrackFormatOption
+## 「暂停时间轴」勾选框（2026-11-08）
+var pause_timeline_check: CheckBox = null
 
 # 跟着权限一起压暗的标签（锁住的项如果只有控件变灰、标签还亮着，看起来像坏了）
 @onready var mode_label: Label = %ModeLabel
@@ -72,6 +74,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	header.text = HEADER_EXPANDED % HEADER_TITLE
 	content.visible = true
+	_build_sections()
 
 	# 用户 2026-10-31：控件不用占满横向空间，200 px 足够（和最佳路径的选择框一致）
 	_normalize_control_widths()
@@ -120,6 +123,44 @@ func _ready() -> void:
 ##   进游戏后          sim_settings.setup(true, Game.season_mode)
 ##
 ## 可以先调用再 add_child —— 那种情况下会记住上下文，等 _ready 时再套用。
+## 模拟页分区（2026-11-08）：非作弊的「模拟选项」和影响强度的「环境参数」。
+## 用小标题区分，不加图标/变色、不加介绍文字（用户要求）。
+func _build_sections() -> void:
+	var sec_a := _make_section_label("── 模拟选项 ──")
+	var sec_b := _make_section_label("── 环境参数（影响强度）──")
+	content.add_child(sec_a)
+	content.add_child(sec_b)
+	pause_timeline_check = CheckBox.new()
+	pause_timeline_check.text = "暂停时间轴"
+	pause_timeline_check.custom_minimum_size = Vector2(200, pause_timeline_check.custom_minimum_size.y)
+	pause_timeline_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	pause_timeline_check.tooltip_text = "日期与季节海温冻结在当前值；台风照常移动、增强/减弱（暂停期间不记最佳路径样本）"
+	pause_timeline_check.toggled.connect(_on_pause_timeline_toggled)
+	content.add_child(pause_timeline_check)
+	# 重排：模拟选项（模式/风季/记录扰动/最佳路径）→ 环境参数（海温/季节增幅/暂停时间轴）
+	var order: Array[Node] = [
+		sec_a, content.get_node("ModeRow"), content.get_node("SeasonCheck"),
+		content.get_node("SepMid2"), record_disturbances_check,
+		content.get_node("BestTrackGroup"),
+		sec_b, content.get_node("MeanSstRow"), content.get_node("SeasonalAmpRow"),
+		pause_timeline_check,
+	]
+	for i in order.size():
+		content.move_child(order[i], i)
+
+
+func _make_section_label(text_value: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = text_value
+	lbl.add_theme_font_size_override("font_size", 17)
+	lbl.add_theme_color_override("font_color", Color(0.72, 0.74, 0.78))
+	return lbl
+
+
+func _on_pause_timeline_toggled(pressed: bool) -> void:
+	GameSettings.set_pause_timeline(pressed)
+
+
 func setup(p_in_game: bool, p_season: bool) -> void:
 	_in_game = p_in_game
 	_season = p_season
@@ -199,6 +240,8 @@ func refresh_from_store() -> void:
 
 	mean_sst_spin.set_value_no_signal(GameSettings.mean_sst)
 	seasonal_amp_spin.set_value_no_signal(GameSettings.seasonal_amplitude)
+	if pause_timeline_check != null:
+		pause_timeline_check.set_pressed_no_signal(GameSettings.pause_timeline)
 
 	record_disturbances_check.set_pressed_no_signal(GameSettings.record_disturbances)
 	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)

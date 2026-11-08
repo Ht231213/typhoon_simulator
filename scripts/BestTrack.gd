@@ -174,6 +174,10 @@ func sample(storm) -> void:
 		return
 	var d: Dictionary = _active[idx]
 	var seg := int(storm.segment)
+	# 暂停时间轴期间不记样本（否则时间戳会重复）；恢复后从当前段继续
+	if GameSettings.pause_timeline:
+		d["last_segment"] = seg
+		return
 	if seg == int(d["last_segment"]):
 		return
 	d["last_segment"] = seg
