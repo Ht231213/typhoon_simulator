@@ -767,8 +767,8 @@ const POINT_COLOR := Color(1.0, 0.85, 0.1)
 const POINT_OUTLINE := Color(0.15, 0.10, 0.0, 0.9)
 ## 路径线宽
 const TRACK_WIDTH := 2.5
-## 副热带气旋（ST）的轨迹颜色：青绿（用户 2026-11-08 从截图取色 #4DD9C0）
-const ST_TRACK_COLOR := Color8(77, 217, 192)
+## 副热带气旋（ST）的轨迹颜色：官方 Subtropical Storm 色 #40FFCF（用户 2026-11-08）
+const ST_TRACK_COLOR := Color8(64, 255, 207)
 ## 变性中 / 已变性的路径线：白色虚线
 const EXTRA_COLOR := Color(1.0, 1.0, 1.0, 0.95)
 const EXTRA_DASH := 9.0
