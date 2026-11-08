@@ -758,8 +758,14 @@ func _draw_track() -> void:
 	var i := 1
 	while i < points.size():
 		var phase := phases[i] if i < phases.size() else 0
+		var kt_i := intensities[i] if i < intensities.size() else 0.0
+		var dashed_i := _is_dashed(phase, kt_i)
 		var j := i
-		while j + 1 < points.size() and (phases[j + 1] if j + 1 < phases.size() else 0) == phase:
+		while j + 1 < points.size():
+			var ph2 := phases[j + 1] if j + 1 < phases.size() else 0
+			var kt2 := intensities[j + 1] if j + 1 < intensities.size() else 0.0
+			if ph2 != phase or _is_dashed(ph2, kt2) != dashed_i:
+				break
 			j += 1
 		# 相邻点去重 + 跳过零长度段（用户 2026-11-08 的「尖刺」问题）
 		var run := PackedVector2Array()
@@ -777,28 +783,21 @@ func _draw_track() -> void:
 		if run.size() < 2:
 			i = j + 1
 			continue
-		# 用户 2026-11-08：轨迹改成**平滑曲线**（单调三次插值，过原始点且不过冲）
+		# 平滑曲线（单调三次插值，过原始点且不过冲）
 		var smooth := _smooth_polyline(run)
-		if phase == 3:
-			# 副热带：实线青绿
-			var st_cols := PackedColorArray()
-			for k in smooth.size():
-				st_cols.append(ST_TRACK_COLOR)
-			draw_polyline_colors(smooth, st_cols, TRACK_WIDTH, true)
-		elif phase >= 1:
-			# 变性中 / 温带：白色虚线（沿曲线采样画短段，因为 draw_dashed_line 只能画直线）
-			_draw_dashed_polyline(smooth, Color(1.0, 1.0, 1.0))
+		# 颜色沿曲线插值（颜色只看风速）
+		var cols := PackedColorArray()
+		var nseg := run.size() - 1
+		for k in smooth.size():
+			var src := float(k) / float(CURVE_SUBDIV)
+			var idx := clampi(int(floorf(src)), 0, nseg)
+			var frac := clampf(src - float(idx), 0.0, 1.0)
+			var c0 := run_cols[mini(idx, run_cols.size() - 1)]
+			var c1 := run_cols[mini(idx + 1, run_cols.size() - 1)]
+			cols.append(c0.lerp(c1, frac))
+		if dashed_i:
+			_draw_dashed_polyline(smooth, cols)
 		else:
-			# 热带：沿曲线按强度插值颜色
-			var cols := PackedColorArray()
-			var nseg := run.size() - 1
-			for k in smooth.size():
-				var src := float(k) / float(CURVE_SUBDIV)
-				var i0 := clampi(int(floorf(src)), 0, nseg)
-				var frac := clampf(src - float(i0), 0.0, 1.0)
-				var c0 := run_cols[mini(i0, run_cols.size() - 1)]
-				var c1 := run_cols[mini(i0 + 1, run_cols.size() - 1)]
-				cols.append(c0.lerp(c1, frac))
 			draw_polyline_colors(smooth, cols, TRACK_WIDTH, true)
 		i = j + 1
 
@@ -867,11 +866,13 @@ func _monotone_tangents(v: PackedFloat32Array) -> PackedFloat32Array:
 
 
 ## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）
-func _draw_dashed_polyline(smooth: PackedVector2Array, color: Color) -> void:
+## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）
+func _draw_dashed_polyline(smooth: PackedVector2Array, cols: PackedColorArray) -> void:
 	var dash := EXTRA_DASH
 	var gap := EXTRA_GAP
 	var on_dash := true
 	var remain := dash
+	var ci := 0
 	for k in range(1, smooth.size()):
 		var a := smooth[k - 1]
 		var b := smooth[k]
@@ -879,6 +880,7 @@ func _draw_dashed_polyline(smooth: PackedVector2Array, color: Color) -> void:
 		if seg_len < 0.001:
 			continue
 		var dir := (b - a) / seg_len
+		var color: Color = cols[clampi(k, 0, cols.size() - 1)] if not cols.is_empty() else Color.WHITE
 		var pos := 0.0
 		while pos < seg_len:
 			var step := minf(remain, seg_len - pos)
@@ -889,16 +891,25 @@ func _draw_dashed_polyline(smooth: PackedVector2Array, color: Color) -> void:
 			if remain <= 0.0001:
 				on_dash = not on_dash
 				remain = dash if on_dash else gap
+		ci += 1
+
 
 
 ## 当前位置的颜色：变性后用白/浅蓝，否则按强度
 func _track_color_at(kt: float, phase: int) -> Color:
-	# 副热带（3）：青绿；变性中（1）/ 变性后（2）：纯白；热带按强度多色。
-	if phase == 3:
-		return ST_TRACK_COLOR
-	if phase >= 1:
-		return Color(1.0, 1.0, 1.0)
+	# 用户 2026-11-08：颜色**只看风速**（官方 10 段表，段内插值）；
+	# 等级（phase）只决定实线/虚线，不参与取色。
 	return Const.track_color(kt)
+
+
+## 线型：实线 = 热带（含 ≤21 kt 的 L）+ 副热带 ST；
+##       虚线 = 残余环流（热带且 <15 kt）+ 变性中 + 温带。
+func _is_dashed(phase: int, kt: float) -> bool:
+	if phase == int(Storm.Phase.SUBTROPICAL):
+		return false          # ST：有组织环流 → 实线
+	if phase != int(Storm.Phase.TROPICAL):
+		return true           # 变性中 / 温带 → 虚线
+	return kt < 15.0          # 热带：<15 kt 残余环流 → 虚线
 
 
 ## 34 kt 风圈的**物理半径**（km）

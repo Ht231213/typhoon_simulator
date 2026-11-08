@@ -1088,10 +1088,23 @@ static func ex_track_color(kt: float) -> Color:
 	return Color8(RGBS[RGBS.size() - 1].x, RGBS[RGBS.size() - 1].y, RGBS[RGBS.size() - 1].z)
 
 static func track_color(kt: float) -> Color:
-	if kt <= TRACK_COLOR_KT[0]:
-		return TRACK_COLORS[0]
-	for i in range(1, TRACK_COLOR_KT.size()):
-		if kt <= TRACK_COLOR_KT[i]:
-			var t := (kt - TRACK_COLOR_KT[i - 1]) / (TRACK_COLOR_KT[i] - TRACK_COLOR_KT[i - 1])
-			return TRACK_COLORS[i - 1].lerp(TRACK_COLORS[i], clampf(t, 0.0, 1.0))
-	return TRACK_COLORS[TRACK_COLORS.size() - 1]
+	# 用户 2026-11-08：**离散取色**（不插值）—— 路径线是一段段纯色，段间硬切换。
+	if kt <= 21.0:
+		return TRACK_COLORS[0]    # #F0F0F0 白灰
+	if kt <= 33.0:
+		return TRACK_COLORS[1]    # #0060FF 蓝
+	if kt <= 63.0:
+		return TRACK_COLORS[2]    # #00FF00 绿
+	if kt <= 82.0:
+		return TRACK_COLORS[3]    # #FFFF00 黄
+	if kt <= 96.0:
+		return TRACK_COLORS[4]    # #FFB000 橙黄
+	if kt <= 112.0:
+		return TRACK_COLORS[5]    # #FF7000 橙
+	if kt <= 136.0:
+		return TRACK_COLORS[6]    # #FF0000 红
+	if kt <= 154.0:
+		return TRACK_COLORS[7]    # #FF00FF 品红
+	if kt <= 169.0:
+		return TRACK_COLORS[8]    # #BF00FF 紫
+	return TRACK_COLORS[9]        # #8000FF 深紫
