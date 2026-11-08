@@ -999,21 +999,6 @@ static func tier_progress(kt: float) -> float:
 	return 0.0
 
 
-## 档内颜色渐变（用户 2026-11-07）：朝**下一档官方色**（TRACK_COLORS）的色相偏移。
-## 返回 = p × Δh；p 来自 tier_progress()。x/ST/EX/>=170 kt 的 p=0 → 0。
-static func tier_hue_shift(kt: float) -> float:
-	# 用户 2026-11-07：ts/c2/c3/c4 改用素材里的 +/- 变体图标，不再染色；
-	# 只有没有变体的 l / d 保留色相渐变（L→D 变蓝、D→TS 变绿）。
-	const DELTAS: Array = [
-		[15.0, 22.0, -25.0],    # l → d
-		[22.0, 34.0, -57.0],    # d → ts：到 34 kt 时=青绿（升级瞬间衔接 TS 绿），用户 2026-11-07
-	]
-	for d in DELTAS:
-		if kt >= float(d[0]) and kt < float(d[1]):
-			return tier_progress(kt) * float(d[2])
-	return 0.0
-
-
 static func category_label(cat: int) -> String:
 	match cat:
 		CAT_SUBTROPICAL: return "ST"
@@ -1048,26 +1033,22 @@ static func sst_color(sst: float) -> Color:
 	return WATER_COLD.lerp(WATER_WARM, t)
 
 
-## 台风路径颜色，逐个对应参考「台风中心.md」里按类型设的画笔颜色：
-##   −4 #e8e8e8 / −3 #d8d8d8 / −2 #00caff / −1 #0090ff / 0 #1dff00
-##    1 #ffff00 /  2 #ffd000 /  3 #ff7b00 /  4 #ff0000 / 5 #ff007b
-## 轨迹线配色（A6：匹配参考工程）。
-##
-## 以前是我们自己挑的一组颜色；2026-10-30 改成**从 SMCY1.3 图标外圈图里取主色**
-## （脚本：temp/sample_track_colors.py），这样轨迹线和图标是同一套色系。
-## 下标 = 分类 − CAT_EXTRATROPICAL：0=温带、1=弱、2=扰动、3=低压、4=TS、5..9=C1..C5
+## 台风轨迹配色（用户 2026-11-08 提供的官方色卡 · 上排纯色）：
+##   L/Ex #F0F0F0 / D #0868F8 / TS #08F808 / C1 #F8F808
+##   C2 #F8B808 / C3 #F86808 / C4 #F80808 / C5 #F808F8
+## 用法：按风速在这些节点之间**线性插值**，所以轨迹是连续渐变、没有段间跳变。
 const TRACK_COLORS: Array[Color] = [
-	Color8(139, 145, 191),   # 温带（ex 蓝灰）
-	Color8(175, 174, 191),   # 弱（generic 灰）
-	Color8(179, 177, 191),   # 扰动（db 灰白）
-	Color8(88, 92, 191),     # 低压（td 蓝紫）
-	Color8(37, 208, 18),     # TS（绿）
-	Color8(208, 208, 42),    # C1（黄）
-	Color8(211, 155, 16),    # C2（橙黄）
-	Color8(222, 110, 15),    # C3（橙红）
-	Color8(223, 34, 15),     # C4（红）
-	Color8(208, 35, 213),    # C5（品红）
+	Color8(240, 240, 240),   # L / Ex（灰白）
+	Color8(8, 104, 248),     # D（蓝）
+	Color8(8, 248, 8),       # TS（绿）
+	Color8(248, 248, 8),     # C1（黄）
+	Color8(248, 184, 8),     # C2（橙黄）
+	Color8(248, 104, 8),     # C3（橙）
+	Color8(248, 8, 8),       # C4（红）
+	Color8(248, 8, 248),     # C5（品红）
 ]
+## 与 TRACK_COLORS 一一对应的风速节点（kt）
+const TRACK_COLOR_KT: Array[float] = [10.0, 28.0, 48.0, 73.0, 89.0, 105.0, 125.0, 160.0]
 
 
 ## 温带段（phase=2）的线色：照参考工程 `option/RGB-EX.txt` 的表
@@ -1090,6 +1071,10 @@ static func ex_track_color(kt: float) -> Color:
 	return Color8(RGBS[RGBS.size() - 1].x, RGBS[RGBS.size() - 1].y, RGBS[RGBS.size() - 1].z)
 
 static func track_color(kt: float) -> Color:
-	var cats := category_from_wind(kt)
-	var idx := clampi(cats - CAT_EXTRATROPICAL, 0, TRACK_COLORS.size() - 1)
-	return TRACK_COLORS[idx]
+	if kt <= TRACK_COLOR_KT[0]:
+		return TRACK_COLORS[0]
+	for i in range(1, TRACK_COLOR_KT.size()):
+		if kt <= TRACK_COLOR_KT[i]:
+			var t := (kt - TRACK_COLOR_KT[i - 1]) / (TRACK_COLOR_KT[i] - TRACK_COLOR_KT[i - 1])
+			return TRACK_COLORS[i - 1].lerp(TRACK_COLORS[i], clampf(t, 0.0, 1.0))
+	return TRACK_COLORS[TRACK_COLORS.size() - 1]

@@ -81,6 +81,10 @@ var _tier_variants_cache := true
 ## 不能强制拉成正方形，否则画面内容会变小（用户 2026-11-08 报 EX 比其他图标小）。
 var _icon_ratio_cache: Dictionary = {}
 var _icon_ratio := 1.0
+## 档内 +/- 变体：第二个视频播放器（交叉淡化用，用户 2026-11-08）
+var _icon_video_alt: VideoStreamPlayer = null
+## 变体视频的权重 0..1（0=只用基础图标，1=只用变体）
+var _variant_w := 0.0
 
 # ------------------------- 其它特效播放器 -------------------------
 var _landfall_video: VideoStreamPlayer = null
@@ -109,6 +113,8 @@ func _ready() -> void:
 	_icon_video.loop = true
 	_icon_video_prev = _make_video("StormIconVideoPrev")
 	_icon_video_prev.loop = true
+	_icon_video_alt = _make_video("StormIconVideoAlt")
+	_icon_video_alt.loop = true
 	# type=single（单一图标）用：一张 png/jpg，不旋转不变色
 	_single_sprite = Sprite2D.new()
 	_single_sprite.name = "StormIconSingle"
@@ -160,6 +166,11 @@ func _on_settings_changed() -> void:
 
 
 func _stop_icon_videos() -> void:
+	if _icon_video_alt != null:
+		_icon_video_alt.stop()
+		_icon_video_alt.visible = false
+		_icon_video_alt.stream = null
+		_variant_w = 0.0
 	for p in [_icon_video, _icon_video_prev]:
 		if p != null:
 			p.stop()
@@ -243,30 +254,33 @@ func _icon_kind() -> String:
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
 		return "ex"
-	# 用户 2026-11-07：档内进度用素材里的 +/- 变体（+ = 下一档配色，- = 上一档配色）
-	#   ts   p>=0.5 → ts_plus（C1 配色）
-	#   c2/c3 p<0.5 → c2_minus / c3_minus（上一档配色）
-	#   c4   p>=0.5 → c4_plus（C5 配色）
-	var base_kind := _base_icon_kind()
-	if not GameSettings.tier_variants or not IconPacksLoader.has_tier_variants(icon_pack):
-		return base_kind
-	var prog := Const.tier_progress(live_intensity)
-	match base_kind:
-		"ts":
-			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.ts_plus"):
-				return "ts_plus"
-		"c2":
-			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c2_minus"):
-				return "c2_minus"
-		"c3":
-			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c3_minus"):
-				return "c3_minus"
-		"c4":
-			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c4_plus"):
-				return "c4_plus"
-	return base_kind
+	return _base_icon_kind()
 
 
+
+
+## 各基础档位的主色色相（取 TRACK_COLORS，与轨迹配色一致）
+func _kind_hue(kind: String) -> float:
+	var kt := 60.0
+	match kind:
+		"l": kt = 18.0
+		"d": kt = 27.0
+		"ts": kt = 49.0
+		"c1": kt = 73.0
+		"c2": kt = 90.0
+		"c3": kt = 105.0
+		"c4": kt = 125.0
+		"c5": kt = 150.0
+		"ex": return 0.0
+		"ss": return ST_TRACK_COLOR.h * 360.0
+		_: return 0.0
+	return Const.track_color(kt).h * 360.0
+
+
+## 旧档 → 新档 的最短色相差（度，范围 -180~180）
+func _tier_hue_delta(from_kind: String, to_kind: String) -> float:
+	var d := _kind_hue(from_kind) - _kind_hue(to_kind)
+	return wrapf(d, -180.0, 180.0)
 
 
 ## 基础档位（不含 ST / EX / 变体）
@@ -349,7 +363,48 @@ func _update_icon() -> void:
 		return
 	if _single_sprite != null:
 		_single_sprite.visible = false
-	var id := current_icon_id()
+	# 档内 +/- 变体：计算基础图标、变体图标与权重（连续交叉淡化，不再 0.5 硬切）
+	var base_id := "mainicon.icon.north." + _base_icon_kind()
+	var variant_id := ""
+	var variant_w := 0.0
+	var p_tier := Const.tier_progress(live_intensity)
+	if GameSettings.tier_variants and IconPacksLoader.has_tier_variants(icon_pack):
+		var cand := ""
+		match _base_icon_kind():
+			"ts":
+				cand = "mainicon.icon.north.ts_plus"
+				variant_w = p_tier
+			"c4":
+				cand = "mainicon.icon.north.c4_plus"
+				variant_w = p_tier
+			"c2":
+				cand = "mainicon.icon.north.c2_minus"
+				variant_w = 1.0 - p_tier
+			"c3":
+				cand = "mainicon.icon.north.c3_minus"
+				variant_w = 1.0 - p_tier
+		if cand != "" and IconPacksLoader.has(icon_pack, cand):
+			variant_id = cand
+	var main_id := base_id
+	var alt_id := ""
+	var blend_w := 0.0
+	if variant_id != "":
+		if variant_w <= 0.02:
+			main_id = base_id
+		elif variant_w >= 0.98:
+			main_id = variant_id
+		else:
+			alt_id = variant_id
+			blend_w = variant_w
+	# 跨档颜色转场：基础档位变化时，新图标从旧档主色相回正（0.3 s）
+	var base_kind_now := _base_icon_kind()
+	if _prev_base_kind != "" and _prev_base_kind != base_kind_now and int(live_phase) < 1:
+		_trans_hue = _tier_hue_delta(_prev_base_kind, base_kind_now)
+		_trans_start = _trans_hue
+		_trans_start_ms = Time.get_ticks_msec()
+	# ⚠ 无论是否触发转场都要更新（否则每次 _update_icon 都重启转场）
+	_prev_base_kind = base_kind_now
+	var id := main_id
 	_icon_tier = id.get_slice(".", 3) if id.count(".") >= 3 else id
 	var stream: VideoStream = IconPacksLoader.video(icon_pack, id)
 	if stream == null:
@@ -386,6 +441,26 @@ func _update_icon() -> void:
 	# 以台风中心为中心（变高也不偏移）
 	_icon_video.position = live_position - _icon_video.size * 0.5
 	_icon_video.visible = true
+	# 变体交叉淡化：p 在中间区间才开第二个播放器（两端停掉，省性能）
+	if alt_id != "" and _icon_video_alt != null:
+		var alt_stream: VideoStream = IconPacksLoader.video(icon_pack, alt_id)
+		if alt_stream != null:
+			if _icon_video_alt.stream != alt_stream:
+				_icon_video_alt.stream = alt_stream
+				_icon_video_alt.play()
+			_icon_video_alt.size = _icon_video.size
+			_icon_video_alt.position = _icon_video.position
+			_icon_video_alt.visible = true
+			# 相位对齐：跟主视频同步播放位置
+			_icon_video_alt.stream_position = fmod(maxf(_icon_video.stream_position, 0.0), VIDEO_PHASE_SECONDS)
+			_variant_w = blend_w
+		else:
+			_variant_w = 0.0
+	elif _icon_video_alt != null:
+		_variant_w = 0.0
+		_icon_video_alt.stop()
+		_icon_video_alt.visible = false
+		_icon_video_alt.stream = null
 	_reset_tint_target()
 	_update_tier_bright_target()
 	_apply_video_tint()
@@ -462,9 +537,16 @@ static func icon_diameter_for(base: float, kt: float) -> float:
 var _tint_shown := Color.WHITE
 var _tint_target := Color.WHITE
 var _tint_gradient := 0.0
-## 档内颜色渐变（用户 2026-11-07）：目标与平滑值（度）
+## 档内颜色渐变（已停用，保留 0）
 var _tier_hue_target := 0.0
 var _tier_hue_shown := 0.0
+## 跨档颜色转场（用户 2026-11-08）：新图标入场时从旧档色相回正，0.3 s
+const TIER_TRANSITION_SECONDS := 0.3
+var _trans_hue := 0.0
+var _trans_start := 0.0
+var _trans_start_ms := 0
+## 上一次的基础档位（用于检测跨档）
+var _prev_base_kind := ""
 ## 色相旋转（度）当前/目标/过渡时长
 var _hue_shown := 0.0
 var _hue_target := 0.0
@@ -506,28 +588,30 @@ func _reset_tint_target() -> void:
 
 
 func _apply_video_tint() -> void:
-	for p in [_icon_video, _icon_video_prev]:
+	for p in [_icon_video, _icon_video_prev, _icon_video_alt]:
 		if p != null and p.material is ShaderMaterial:
 			(p.material as ShaderMaterial).set_shader_parameter("tint", _tint_shown)
-			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown)
+			var extra := _trans_hue if p == _icon_video else 0.0
+			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown + extra)
 			(p.material as ShaderMaterial).set_shader_parameter("tier_hue_deg", _tier_hue_shown)
 
 
 func _apply_video_alpha() -> void:
 	if _icon_video != null:
-		var a := (1.0 - _video_fade) * _icon_fade
+		var a := (1.0 - _video_fade) * _icon_fade * (1.0 - _variant_w)
 		_icon_video.modulate = Color(1, 1, 1, clampf(a, 0.0, 1.0))
+	if _icon_video_alt != null and _icon_video_alt.visible:
+		var aa := (1.0 - _video_fade) * _icon_fade * _variant_w
+		_icon_video_alt.modulate = Color(1, 1, 1, clampf(aa, 0.0, 1.0))
 	if _icon_video_prev != null:
 		_icon_video_prev.modulate = Color(1, 1, 1, clampf(_video_fade * _icon_fade, 0.0, 1.0))
 
 
 ## 档内颜色渐变（只对 advanced/adv_extend 的视频图标；single/内置不生效）
 func _update_tier_bright_target() -> void:
-	var t := IconPacksLoader.type_of(icon_pack)
-	if t != "advanced" and t != "adv_extend":
-		_tier_hue_target = 0.0
-		return
-	_tier_hue_target = Const.tier_hue_shift(live_intensity)
+	# 用户 2026-11-08 结论：素材内部颜色恒定，没有「档内渐变」→ 全部不做档内染色。
+	# （保留函数名，避免其他地方调用报错；目标恒为 0）
+	_tier_hue_target = 0.0
 
 
 func _advance_video_fade(delta: float) -> void:
@@ -579,6 +663,16 @@ func _process(delta: float) -> void:
 					_icon_ratio = ratio
 					_icon_video.size = Vector2(d2, d2 * ratio)
 					_icon_video.position = live_position - _icon_video.size * 0.5
+
+	# 跨档颜色转场：线性回正（0.3 s）
+	if _trans_start_ms > 0:
+		var elapsed := float(Time.get_ticks_msec() - _trans_start_ms) / 1000.0
+		var remain := clampf(1.0 - elapsed / TIER_TRANSITION_SECONDS, 0.0, 1.0)
+		_trans_hue = _trans_start * remain
+		if remain <= 0.0:
+			_trans_hue = 0.0
+			_trans_start_ms = 0
+		_apply_video_tint()
 
 	# 档内颜色平滑（0.25 s，避免跨档时闪一下）
 	if absf(_tier_hue_shown - _tier_hue_target) > 0.05:
@@ -673,6 +767,8 @@ const POINT_COLOR := Color(1.0, 0.85, 0.1)
 const POINT_OUTLINE := Color(0.15, 0.10, 0.0, 0.9)
 ## 路径线宽
 const TRACK_WIDTH := 2.5
+## 副热带气旋（ST）的轨迹颜色：青绿（用户 2026-11-08 从截图取色 #4DD9C0）
+const ST_TRACK_COLOR := Color8(77, 217, 192)
 ## 变性中 / 已变性的路径线：白色虚线
 const EXTRA_COLOR := Color(1.0, 1.0, 1.0, 0.95)
 const EXTRA_DASH := 9.0
@@ -760,8 +856,7 @@ func _draw_track() -> void:
 		var j := i
 		while j + 1 < points.size() and (phases[j + 1] if j + 1 < phases.size() else 0) == phase:
 			j += 1
-		# 用户 2026-11-08：轨迹出现「P1→P2→P1」尖刺。相邻点去重 + 跳过零长度段，
-		# 避免抗锯齿折线在重复/极近顶点上画出回勾；顶点色数量必须与顶点数一致。
+		# 相邻点去重 + 跳过零长度段（用户 2026-11-08 的「尖刺」问题）
 		var run := PackedVector2Array()
 		var run_cols := PackedColorArray()
 		var prev := points[i - 1]
@@ -770,26 +865,132 @@ func _draw_track() -> void:
 		for k in range(i, j + 1):
 			var pt: Vector2 = points[k]
 			if pt.distance_to(prev) < 0.5:
-				continue            # 重复点：不产生零长度段
+				continue
 			run.append(pt)
 			run_cols.append(Const.track_color(intensities[k] if k < intensities.size() else 0.0))
 			prev = pt
 		if run.size() < 2:
 			i = j + 1
 			continue
-		if phase >= 1:
-			for k in range(1, run.size()):
-				draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0),
-					TRACK_WIDTH, EXTRA_DASH)
+		# 用户 2026-11-08：轨迹改成**平滑曲线**（单调三次插值，过原始点且不过冲）
+		var smooth := _smooth_polyline(run)
+		if phase == 3:
+			# 副热带：实线青绿
+			var st_cols := PackedColorArray()
+			for k in smooth.size():
+				st_cols.append(ST_TRACK_COLOR)
+			draw_polyline_colors(smooth, st_cols, TRACK_WIDTH, true)
+		elif phase >= 1:
+			# 变性中 / 温带：白色虚线（沿曲线采样画短段，因为 draw_dashed_line 只能画直线）
+			_draw_dashed_polyline(smooth, Color(1.0, 1.0, 1.0))
 		else:
-			draw_polyline_colors(run, run_cols, TRACK_WIDTH, true)
+			# 热带：沿曲线按强度插值颜色
+			var cols := PackedColorArray()
+			var nseg := run.size() - 1
+			for k in smooth.size():
+				var src := float(k) / float(CURVE_SUBDIV)
+				var i0 := clampi(int(floorf(src)), 0, nseg)
+				var frac := clampf(src - float(i0), 0.0, 1.0)
+				var c0 := run_cols[mini(i0, run_cols.size() - 1)]
+				var c1 := run_cols[mini(i0 + 1, run_cols.size() - 1)]
+				cols.append(c0.lerp(c1, frac))
+			draw_polyline_colors(smooth, cols, TRACK_WIDTH, true)
 		i = j + 1
+
+
+## 曲线细分数（每两个原始点之间采样的段数）
+const CURVE_SUBDIV := 8
+
+
+## 单调三次 Hermite 插值（Fritsch–Carlson，用户 2026-11-08）：
+##   过所有原始点、且**不会过冲/回勾**（每个区间内单调）。
+func _smooth_polyline(pts: PackedVector2Array) -> PackedVector2Array:
+	var n := pts.size()
+	if n < 2:
+		return pts
+	var xs := PackedFloat32Array()
+	var ys := PackedFloat32Array()
+	for k in n:
+		xs.append(pts[k].x)
+		ys.append(pts[k].y)
+	var mx := _monotone_tangents(xs)
+	var my := _monotone_tangents(ys)
+	var out := PackedVector2Array()
+	for seg in n - 1:
+		for sub in CURVE_SUBDIV:
+			var t := float(sub) / float(CURVE_SUBDIV)
+			var t2 := t * t
+			var t3 := t2 * t
+			var h00 := 2.0 * t3 - 3.0 * t2 + 1.0
+			var h10 := t3 - 2.0 * t2 + t
+			var h01 := -2.0 * t3 + 3.0 * t2
+			var h11 := t3 - t2
+			out.append(Vector2(
+				h00 * xs[seg] + h10 * mx[seg] + h01 * xs[seg + 1] + h11 * mx[seg + 1],
+				h00 * ys[seg] + h10 * my[seg] + h01 * ys[seg + 1] + h11 * my[seg + 1]
+			))
+	out.append(pts[n - 1])
+	return out
+
+
+## Fritsch–Carlson 单调三次切线
+func _monotone_tangents(v: PackedFloat32Array) -> PackedFloat32Array:
+	var n := v.size()
+	var d := PackedFloat32Array()
+	var m := PackedFloat32Array()
+	if n < 2:
+		return v
+	for k in n - 1:
+		d.append(v[k + 1] - v[k])
+	m.append(d[0])
+	for k in range(1, n - 1):
+		m.append((d[k - 1] + d[k]) * 0.5)
+	m.append(d[n - 2])
+	for k in n - 1:
+		if absf(d[k]) < 1e-9:
+			m[k] = 0.0
+			m[k + 1] = 0.0
+		else:
+			var a := m[k] / d[k]
+			var b := m[k + 1] / d[k]
+			var s := a * a + b * b
+			if s > 9.0:
+				var tau := 3.0 / sqrt(s)
+				m[k] = tau * a * d[k]
+				m[k + 1] = tau * b * d[k]
+	return m
+
+
+## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）
+func _draw_dashed_polyline(smooth: PackedVector2Array, color: Color) -> void:
+	var dash := EXTRA_DASH
+	var gap := EXTRA_GAP
+	var on_dash := true
+	var remain := dash
+	for k in range(1, smooth.size()):
+		var a := smooth[k - 1]
+		var b := smooth[k]
+		var seg_len := a.distance_to(b)
+		if seg_len < 0.001:
+			continue
+		var dir := (b - a) / seg_len
+		var pos := 0.0
+		while pos < seg_len:
+			var step := minf(remain, seg_len - pos)
+			if on_dash:
+				draw_line(a + dir * pos, a + dir * (pos + step), color, TRACK_WIDTH)
+			pos += step
+			remain -= step
+			if remain <= 0.0001:
+				on_dash = not on_dash
+				remain = dash if on_dash else gap
 
 
 ## 当前位置的颜色：变性后用白/浅蓝，否则按强度
 func _track_color_at(kt: float, phase: int) -> Color:
-	# 用户 2026-11-07：变性中（1）+ 变性后（2）轨迹段**统一纯白**
-	# （不再用 RGB-EX 表，那个表 90 kt 是橙色，用户看橙色不对）
+	# 副热带（3）：青绿；变性中（1）/ 变性后（2）：纯白；热带按强度多色。
+	if phase == 3:
+		return ST_TRACK_COLOR
 	if phase >= 1:
 		return Color(1.0, 1.0, 1.0)
 	return Const.track_color(kt)
