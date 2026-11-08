@@ -75,6 +75,10 @@ var _icon_tier := ""                  ## 当前档位/事件 ID 的短名（调�
 var _icon_uses_extension := false
 ## 上次生效的「等级扩展图标」开关（变了要重建图标）
 var _tier_variants_cache := true
+## 视频图标的原始宽高比（高/宽）：EX 素材是 400×600（比例 1.5），
+## 不能强制拉成正方形，否则画面内容会变小（用户 2026-11-08 报 EX 比其他图标小）。
+var _icon_ratio_cache: Dictionary = {}
+var _icon_ratio := 1.0
 
 # ------------------------- 其它特效播放器 -------------------------
 var _landfall_video: VideoStreamPlayer = null
@@ -375,8 +379,10 @@ func _update_icon() -> void:
 	_icon_fade = 1.0
 	_icon_fading = false
 	var d := icon_diameter_for(icon_diameter, live_intensity)
-	_icon_video.size = Vector2(d, d)
-	_icon_video.position = live_position - Vector2(d, d) * 0.5
+	_icon_ratio = float(_icon_ratio_cache.get(id, 1.0))
+	_icon_video.size = Vector2(d, d * _icon_ratio)
+	# 以台风中心为中心（变高也不偏移）
+	_icon_video.position = live_position - _icon_video.size * 0.5
 	_icon_video.visible = true
 	_reset_tint_target()
 	_update_tier_bright_target()
@@ -557,6 +563,21 @@ func _hide_icon() -> void:
 
 func _process(delta: float) -> void:
 	_advance_video_fade(delta)
+	# 视频尺寸纠正：VideoStream 没有宽高 API，只能等第一帧纹理出来再读。
+	# EX 素材 400×600 → 比例 1.5；其它 400×400 → 1.0（用户 2026-11-08）。
+	if _icon_video != null and _icon_video.visible and _icon_video.stream != null and _icon_video_id != "":
+		var tex := _icon_video.get_video_texture()
+		if tex != null:
+			var sz := tex.get_size()
+			if sz.x > 0.0:
+				var ratio := sz.y / sz.x
+				if absf(ratio - float(_icon_ratio_cache.get(_icon_video_id, -1.0))) > 0.01:
+					_icon_ratio_cache[_icon_video_id] = ratio
+					var d2 := icon_diameter_for(icon_diameter, live_intensity)
+					_icon_ratio = ratio
+					_icon_video.size = Vector2(d2, d2 * ratio)
+					_icon_video.position = live_position - _icon_video.size * 0.5
+
 	# 档内颜色平滑（0.25 s，避免跨档时闪一下）
 	if absf(_tier_hue_shown - _tier_hue_target) > 0.05:
 		_tier_hue_shown = lerpf(_tier_hue_shown, _tier_hue_target, minf(1.0, delta / 0.25))
