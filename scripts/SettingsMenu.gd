@@ -28,9 +28,7 @@ extends Control
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
 ## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
-var pack_button: Button = null
-var pack_popup: PopupPanel = null
-var pack_list: ItemList = null
+var pack_option: OptionButton = null
 ## 扫描到的方案包名（下拉项顺序 = 这个数组）
 var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
@@ -109,31 +107,15 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	# 方案选择：OptionButton/PopupMenu 在 Godot 4.7 没有「单项文字颜色」，
-	# 但版本不兼容要标黄 → 用 Button + PopupPanel + ItemList（ItemList 支持单项颜色）
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	page.add_child(row)
-	var lbl := Label.new()
-	lbl.custom_minimum_size = Vector2(130, 0)
-	lbl.add_theme_font_size_override("font_size", 19)
-	lbl.text = "方案"
-	row.add_child(lbl)
-	pack_button = Button.new()
-	pack_button.custom_minimum_size = Vector2(200, 44)
-	pack_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	pack_button.add_theme_font_size_override("font_size", 19)
-	pack_button.tooltip_text = "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取"
-	pack_button.pressed.connect(_show_pack_popup)
-	row.add_child(pack_button)
-	pack_popup = PopupPanel.new()
-	pack_popup.visible = false
-	add_child(pack_popup)
-	pack_list = ItemList.new()
-	pack_list.custom_minimum_size = Vector2(240, 60)
-	pack_popup.add_child(pack_list)
-	pack_list.item_selected.connect(_on_pack_selected)
+	# 方案选择：和「单位」一样用原生 OptionButton（外观统一，用户 2026-11-08）
+	# ⚠ 版本不匹配不染黄（OptionButton 没有单项颜色 API），改成方案名后面加 " ⚠" 标记。
+	pack_option = _add_option_row(page, "方案", "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取")
+	# 宽度固定 200（和「单位」一致）；长方案名裁剪，不再被最长项撑宽
+	pack_option.fit_to_longest_item = false
+	pack_option.clip_text = true
+	pack_option.custom_minimum_size = Vector2(200, 44)
 	_refresh_pack_options()
+	pack_option.item_selected.connect(_on_pack_selected)
 
 	tier_variants_check = CheckBox.new()
 	tier_variants_check.text = "启用等级扩展图标"
@@ -155,38 +137,23 @@ func _build_preset_page() -> void:
 
 ## 重新扫描方案包并填充下拉（每次打开设置都扫，用户新放文件夹立刻可见）
 func _refresh_pack_options() -> void:
-	if pack_list == null:
+	if pack_option == null:
 		return
 	_pack_names = GameSettings.pack_options()
-	pack_list.clear()
+	pack_option.clear()
 	for i in _pack_names.size():
 		var name := _pack_names[i]
-		pack_list.add_item(name)
-		# version 和游戏不匹配 → 方案名标黄（不弹窗、不报错；内置 Default 不参与）
+		# 版本不匹配 → 名称后加 ⚠（OptionButton 无法单项染色，用户 2026-11-08）
 		if not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name):
-			pack_list.set_item_custom_fg_color(i, Color(1.0, 0.85, 0.2))
+			pack_option.add_item(name + " ⚠")
+		else:
+			pack_option.add_item(name)
 	if _pack_names.is_empty():
-		pack_list.add_item("（无方案包）")
-		pack_list.set_item_disabled(0, true)
-	pack_list.custom_minimum_size = Vector2(240, clampf(_pack_names.size() * 34.0 + 10.0, 44.0, 320.0))
-	var idx := _pack_names.find(GameSettings.icon_pack)
-	if idx >= 0:
-		pack_list.select(idx)
-	_sync_pack_button()
-
-
-func _sync_pack_button() -> void:
-	if pack_button == null:
-		return
-	pack_button.disabled = _pack_names.is_empty()
-	pack_button.text = (GameSettings.icon_pack + "  ▼") if not _pack_names.is_empty() else "（无方案包）"
-
-
-func _show_pack_popup() -> void:
-	if pack_popup == null or pack_button == null:
-		return
-	pack_popup.position = Vector2i(pack_button.global_position + Vector2(0, pack_button.size.y))
-	pack_popup.popup()
+		pack_option.add_item("（无方案包）")
+		pack_option.disabled = true
+	else:
+		pack_option.disabled = false
+	pack_option.select(_current_pack_index())
 
 
 ## 当前选中的方案索引（找不到 = 0）
@@ -290,9 +257,6 @@ func _on_pack_selected(index: int) -> void:
 	if index < 0 or index >= _pack_names.size():
 		return
 	GameSettings.set_icon_pack(_pack_names[index])
-	_sync_pack_button()
-	if pack_popup != null:
-		pack_popup.hide()
 	if tier_variants_check != null:
 		tier_variants_check.visible = _tier_variants_available()
 
