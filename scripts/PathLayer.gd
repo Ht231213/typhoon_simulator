@@ -785,20 +785,20 @@ func _draw_track() -> void:
 			continue
 		# 平滑曲线（单调三次插值，过原始点且不过冲）
 		var smooth := _smooth_polyline(run)
-		# 颜色沿曲线插值（颜色只看风速）
-		var cols := PackedColorArray()
+		# 颜色：**离散**取色，不做任何 lerp（用户 2026-11-08）
+		# 每个采样点取最近原始点的颜色，然后把曲线按「同色」切成若干段分别画，
+		# 段间硬切换；相邻段重叠 1 个点避免断口。
 		var nseg := run.size() - 1
+		var cols := PackedColorArray()
 		for k in smooth.size():
-			var src := float(k) / float(CURVE_SUBDIV)
-			var idx := clampi(int(floorf(src)), 0, nseg)
-			var frac := clampf(src - float(idx), 0.0, 1.0)
-			var c0 := run_cols[mini(idx, run_cols.size() - 1)]
-			var c1 := run_cols[mini(idx + 1, run_cols.size() - 1)]
-			cols.append(c0.lerp(c1, frac))
-		if dashed_i:
-			_draw_dashed_polyline(smooth, cols)
-		else:
-			draw_polyline_colors(smooth, cols, TRACK_WIDTH, true)
+			var idx := clampi(int(roundf(float(k) / float(CURVE_SUBDIV))), 0, nseg)
+			cols.append(run_cols[mini(idx, run_cols.size() - 1)])
+		var seg_start := 0
+		for k in range(1, smooth.size()):
+			if cols[k] != cols[k - 1]:
+				_draw_color_run(smooth, cols, seg_start, k - 1, dashed_i)
+				seg_start = k - 1
+		_draw_color_run(smooth, cols, seg_start, smooth.size() - 1, dashed_i)
 		i = j + 1
 
 
@@ -865,7 +865,24 @@ func _monotone_tangents(v: PackedFloat32Array) -> PackedFloat32Array:
 	return m
 
 
-## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）
+## 画同色的一段曲线（solid 或 dashed，颜色取该段第一个点）
+func _draw_color_run(smooth: PackedVector2Array, cols: PackedColorArray,
+		from_i: int, to_i: int, dashed: bool) -> void:
+	if to_i <= from_i:
+		return
+	var color: Color = cols[clampi(from_i, 0, cols.size() - 1)]
+	var sub := PackedVector2Array()
+	for k in range(from_i, to_i + 1):
+		sub.append(smooth[k])
+	var sub_cols := PackedColorArray()
+	for k in sub.size():
+		sub_cols.append(color)
+	if dashed:
+		_draw_dashed_polyline(sub, sub_cols)
+	else:
+		draw_polyline_colors(sub, sub_cols, TRACK_WIDTH, true)
+
+
 ## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）
 func _draw_dashed_polyline(smooth: PackedVector2Array, cols: PackedColorArray) -> void:
 	var dash := EXTRA_DASH
@@ -902,7 +919,8 @@ func _track_color_at(kt: float, phase: int) -> Color:
 	#   B 副热带 ST：≤33 #40BFFF 浅蓝 / ≥34 #40FFCF 青绿
 	#   C 温带 EX：≤64 #F0F0F0 灰白 / >64 #EFEF00 黄
 	if phase == int(Storm.Phase.SUBTROPICAL):
-		return Color8(64, 191, 255) if kt <= 33.0 else Color8(64, 255, 207)
+		# 只实现「副热带风暴」一档 → 固定青绿（用户 2026-11-08）
+		return Color8(64, 255, 207)
 	if phase == int(Storm.Phase.EXTRATROPICAL):
 		return Color8(240, 240, 240) if kt <= 64.0 else Color8(239, 239, 0)
 	return Const.track_color(kt)
