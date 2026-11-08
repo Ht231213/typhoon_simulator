@@ -81,6 +81,8 @@ var _tier_variants_cache := true
 ## 不能强制拉成正方形，否则画面内容会变小（用户 2026-11-08 报 EX 比其他图标小）。
 var _icon_ratio_cache: Dictionary = {}
 var _icon_ratio := 1.0
+## _smooth_polyline 每个采样点对应的「原始路径参数」（0 = 起点，n-1 = 终点）
+var _smooth_params: PackedFloat32Array = []
 
 # ------------------------- 其它特效播放器 -------------------------
 var _landfall_video: VideoStreamPlayer = null
@@ -791,8 +793,17 @@ func _draw_track() -> void:
 		var nseg := run.size() - 1
 		var cols := PackedColorArray()
 		for k in smooth.size():
-			var idx := clampi(int(roundf(float(k) / float(CURVE_SUBDIV))), 0, nseg)
-			cols.append(run_cols[mini(idx, run_cols.size() - 1)])
+			# 颜色：取**离该采样点最近的原始路径点**的颜色。
+			# （贝塞尔段和原始段不是一一对应，参数映射容易差半段；最近点最稳，用户 2026-11-08）
+			var q := smooth[k]
+			var best := 0
+			var best_d := 1e18
+			for m in run.size():
+				var d := q.distance_squared_to(run[m])
+				if d < best_d:
+					best_d = d
+					best = m
+			cols.append(run_cols[clampi(best, 0, run_cols.size() - 1)])
 		var seg_start := 0
 		for k in range(1, smooth.size()):
 			if cols[k] != cols[k - 1]:
@@ -815,29 +826,34 @@ func _smooth_polyline(pts: PackedVector2Array) -> PackedVector2Array:
 	if n < 2:
 		return pts
 	var out := PackedVector2Array()
-	# 段 1：pts[0] → mid0，控制点 pts[0]
+	_smooth_params = PackedFloat32Array()
+	# 段 1：pts[0] → mid0，控制点 pts[0]（参数 0 → 0.5）
 	out.append(pts[0])
+	_smooth_params.append(0.0)
 	var mid0 := (pts[0] + pts[1]) * 0.5
-	_append_quad(out, pts[0], pts[0], mid0)
-	# 中间段：mid(i-1) → mid(i)，控制点 pts[i]
+	_append_quad(out, pts[0], pts[0], mid0, 0.0, 0.5)
+	# 中间段：mid(i-1) → mid(i)，控制点 pts[i]（参数 i-0.5 → i+0.5）
 	for i in range(1, n - 1):
 		var a := (pts[i - 1] + pts[i]) * 0.5
 		var c := (pts[i] + pts[i + 1]) * 0.5
-		_append_quad(out, a, pts[i], c)
-	# 末段：mid(n-2) → pts[n-1]，控制点 pts[n-1]
+		_append_quad(out, a, pts[i], c, float(i) - 0.5, float(i) + 0.5)
+	# 末段：mid(n-2) → pts[n-1]，控制点 pts[n-1]（参数 n-1.5 → n-1）
 	var last_mid := (pts[n - 2] + pts[n - 1]) * 0.5
-	_append_quad(out, last_mid, pts[n - 1], pts[n - 1])
+	_append_quad(out, last_mid, pts[n - 1], pts[n - 1], float(n) - 1.5, float(n) - 1.0)
 	if out[out.size() - 1] != pts[n - 1]:
 		out.append(pts[n - 1])
+		_smooth_params.append(float(n - 1))
 	return out
 
 
 ## 追加一段二次贝塞尔（不含起点）
-func _append_quad(out: PackedVector2Array, a: Vector2, b: Vector2, c: Vector2) -> void:
+func _append_quad(out: PackedVector2Array, a: Vector2, b: Vector2, c: Vector2,
+		param0 := 0.0, param1 := 1.0) -> void:
 	for k in range(1, CURVE_SUBDIV + 1):
 		var t := float(k) / float(CURVE_SUBDIV)
 		var p := a.lerp(b, t).lerp(b.lerp(c, t), t)
 		out.append(p)
+		_smooth_params.append(lerpf(param0, param1, t))
 
 
 ## 画同色的一段曲线（solid 或 dashed，颜色取该段第一个点）
