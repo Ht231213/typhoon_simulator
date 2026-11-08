@@ -772,13 +772,13 @@ func _draw_track() -> void:
 		var run_cols := PackedColorArray()
 		var prev := points[i - 1]
 		run.append(prev)
-		run_cols.append(Const.track_color(intensities[i - 1] if i - 1 < intensities.size() else 0.0))
+		run_cols.append(_track_color_at(intensities[i - 1] if i - 1 < intensities.size() else 0.0, phase))
 		for k in range(i, j + 1):
 			var pt: Vector2 = points[k]
 			if pt.distance_to(prev) < 0.5:
 				continue
 			run.append(pt)
-			run_cols.append(Const.track_color(intensities[k] if k < intensities.size() else 0.0))
+			run_cols.append(_track_color_at(intensities[k] if k < intensities.size() else 0.0, phase))
 			prev = pt
 		if run.size() < 2:
 			i = j + 1
@@ -897,8 +897,14 @@ func _draw_dashed_polyline(smooth: PackedVector2Array, cols: PackedColorArray) -
 
 ## 当前位置的颜色：变性后用白/浅蓝，否则按强度
 func _track_color_at(kt: float, phase: int) -> Color:
-	# 用户 2026-11-08：颜色**只看风速**（官方 10 段表，段内插值）；
-	# 等级（phase）只决定实线/虚线，不参与取色。
+	# 用户 2026-11-08：官方表分 3 组
+	#   A 热带：按风速 10 段（Const.track_color）
+	#   B 副热带 ST：≤33 #40BFFF 浅蓝 / ≥34 #40FFCF 青绿
+	#   C 温带 EX：≤64 #F0F0F0 灰白 / >64 #EFEF00 黄
+	if phase == int(Storm.Phase.SUBTROPICAL):
+		return Color8(64, 191, 255) if kt <= 33.0 else Color8(64, 255, 207)
+	if phase == int(Storm.Phase.EXTRATROPICAL):
+		return Color8(240, 240, 240) if kt <= 64.0 else Color8(239, 239, 0)
 	return Const.track_color(kt)
 
 
