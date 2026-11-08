@@ -196,8 +196,8 @@ static func _to_180(lon: float) -> float:
 
 ## NATURE：弱于 34 kt 的扰动 → DS；变性完成 → ET；其余（含变性中）→ TS
 static func _nature(kt: float, phase: int, subtype_st := false) -> String:
-	# 副热带段（ST 子状态）→ IBTrACS 的 SS（副热带风暴）
-	if subtype_st:
+	# 副热带（Phase=3 或旧子状态）→ IBTrACS 的 SS（副热带风暴）
+	if subtype_st or phase == 3:
 		return "SS"
 	if phase == 2:                          # Storm.Phase.EXTRATROPICAL
 		return "ET"

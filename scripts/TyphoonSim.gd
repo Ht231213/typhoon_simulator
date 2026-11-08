@@ -315,7 +315,7 @@ func _wind_delta_rate(storm: Storm) -> float:
 	var on_land: bool = storm.landfall or storm.mountain
 
 	# ⑥.5 STC（副热带）段：峰值风缓慢减弱 −1~−2 kt/日（研究文档 11 号）
-	if storm.subtype_st:
+	if storm.phase == Storm.Phase.SUBTROPICAL:
 		delta -= 1.5 / float(Const.TICKS_PER_DAY)
 
 	# ⑦ 科氏项
@@ -329,6 +329,8 @@ func _wind_delta_rate(storm: Storm) -> float:
 			delta -= Const.EXTRATROPICAL_WEAKENING / float(Const.TICKS_PER_DAY)
 		Storm.Phase.EXTRATROPICAL:
 			delta -= Const.EXTRATROPICAL_WEAKENING_DONE / float(Const.TICKS_PER_DAY)
+		Storm.Phase.SUBTROPICAL:
+			pass   # 副热带的缓慢减弱已在 ⑥.5 处理，避免叠加两次
 		_:
 			pass
 
@@ -544,6 +546,8 @@ func _on_phase_changed(storm: Storm, _was: Storm.Phase) -> void:
 			notice.emit("%s 开始变性为温带气旋" % storm.number_text())
 		Storm.Phase.EXTRATROPICAL:
 			notice.emit("%s 已完全变性为温带气旋" % storm.number_text())
+		Storm.Phase.SUBTROPICAL:
+			notice.emit("%s 变性为副热带气旋（ST）" % storm.number_text())
 		_:
 			pass
 	state_changed.emit()
@@ -1162,6 +1166,8 @@ func status_lines() -> PackedStringArray:
 			out.append("状态：变性中 %.0f%%" % (s.transition_progress() * 100.0))
 		Storm.Phase.EXTRATROPICAL:
 			out.append("状态：温带气旋（路径已变白虚线）")
+		Storm.Phase.SUBTROPICAL:
+			out.append("状态：副热带气旋 ST（路径已变白虚线）")
 		_:
 			if s.landfall:
 				out.append("状态：已登陆")

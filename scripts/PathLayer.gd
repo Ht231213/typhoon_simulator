@@ -237,8 +237,8 @@ const EXT_BANDS: Array = [
 
 
 func _icon_kind() -> String:
-	# 副热带子状态：优先用 ss 图标（包内没有 → 程序化渲染兜底）
-	if live_subtype_st:
+	# 副热带稳定态（Phase.SUBTROPICAL=3）：用 ss 图标（包内没有 → 程序化渲染兜底）
+	if int(live_phase) == 3:
 		return "ss"
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
@@ -743,7 +743,7 @@ func _draw_procedural_icon(c: Color) -> void:
 
 
 func _procedural_label() -> String:
-	if live_subtype_st:
+	if int(live_phase) == 3:
 		return "ST"
 	if live_intensity >= 155.0:
 		return "%d" % int(roundf(live_intensity))
@@ -760,26 +760,29 @@ func _draw_track() -> void:
 		var j := i
 		while j + 1 < points.size() and (phases[j + 1] if j + 1 < phases.size() else 0) == phase:
 			j += 1
+		# 用户 2026-11-08：轨迹出现「P1→P2→P1」尖刺。相邻点去重 + 跳过零长度段，
+		# 避免抗锯齿折线在重复/极近顶点上画出回勾；顶点色数量必须与顶点数一致。
 		var run := PackedVector2Array()
-		run.append(points[i - 1])
+		var run_cols := PackedColorArray()
+		var prev := points[i - 1]
+		run.append(prev)
+		run_cols.append(Const.track_color(intensities[i - 1] if i - 1 < intensities.size() else 0.0))
 		for k in range(i, j + 1):
-			run.append(points[k])
+			var pt: Vector2 = points[k]
+			if pt.distance_to(prev) < 0.5:
+				continue            # 重复点：不产生零长度段
+			run.append(pt)
+			run_cols.append(Const.track_color(intensities[k] if k < intensities.size() else 0.0))
+			prev = pt
 		if run.size() < 2:
 			i = j + 1
 			continue
-		match phase:
-			2:
-				for k in range(1, run.size()):
-					draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0),
-						TRACK_WIDTH, EXTRA_DASH)
-			1:
-				for k in range(1, run.size()):
-					draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0), TRACK_WIDTH, EXTRA_DASH)
-			_:
-				var cols := PackedColorArray()
-				for k in range(i, j + 1):
-					cols.append(Const.track_color(intensities[k] if k < intensities.size() else 0.0))
-				draw_polyline_colors(run, cols, TRACK_WIDTH, true)
+		if phase >= 1:
+			for k in range(1, run.size()):
+				draw_dashed_line(run[k - 1], run[k], Color(1.0, 1.0, 1.0),
+					TRACK_WIDTH, EXTRA_DASH)
+		else:
+			draw_polyline_colors(run, run_cols, TRACK_WIDTH, true)
 		i = j + 1
 
 

@@ -296,7 +296,7 @@ func _get_val(key: String) -> String:
 		"cat":
 			return "%s（类型 %d）" % [s.category_text(), s.category] if s != null else "—"
 		"phase":
-			return ["热带", "变性中", "温带气旋"][s.phase] if s != null else "—"
+			return ["热带", "变性中", "温带气旋", "副热带"][int(s.phase)] if s != null else "—"
 		"peak":
 			return "%.1f kt" % s.peak_wind_kt if s != null else "—"
 		"erc":

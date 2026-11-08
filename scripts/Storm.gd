@@ -21,14 +21,18 @@ enum Phase {
 	TROPICAL,        ## 还是热带气旋
 	TRANSITIONING,   ## 变性中（渐变过程）
 	EXTRATROPICAL,   ## 已完全变性为温带气旋
+	SUBTROPICAL,     ## 副热带气旋（稳定状态；加在末尾，旧的 0/1/2 不变）
 }
 var phase: Phase = Phase.TROPICAL
 ## 自动模式延伸路径时，路径点已经移出地图（用于终止）
 var out_of_map := false
-## 变性中途的副热带子状态（用户 2026-11-07）：不是独立 Phase，只是显示/分类标记
-var subtype_st := false
-var _st_rolled := false
-var _st_decided := false
+## 副热带显示标记：由 Phase.SUBTROPICAL 派生（兼容旧引用，不再单独存）
+var subtype_st: bool:
+	get: return phase == Phase.SUBTROPICAL
+## 稳定态（SC/EC）每 6 模拟小时判定一次的计时器
+var phase_eval_days := 0.0
+## EC → TC 的判定次数（最多 2 次）
+var ec_to_tc_attempts := 0
 ## 本场台风是否进入过副热带子状态（记录用，列表显示 ST）
 var reached_st := false
 ## 变性中已经过了多少模拟天（用于渐变进度）
@@ -91,7 +95,7 @@ func transition_progress() -> float:
 	match phase:
 		Phase.TROPICAL:
 			return 0.0
-		Phase.EXTRATROPICAL:
+		Phase.EXTRATROPICAL, Phase.SUBTROPICAL:
 			return 1.0
 		_:
 			return clampf(transition_days / maxf(0.1, transition_target_days), 0.0, 1.0)
@@ -288,6 +292,11 @@ func _tt_conditions_met() -> bool:
 ##   成功率 = clamp(0.30+0.70·B_norm, 0.15, 0.95) × gate(kt)
 ##   时长   = 0.5~0.75 天（B 越高越快），回退 = ×2.5
 ##   失败   = 继续热带减弱；B≥0.85 时走「非锋面 ET / 冷心消散」（仍显示 EX）
+## 走向（用户 2026-11-08 状态机）：
+##   TC --B 指数--> TRANSITIONING（0.75 天短过渡）-- 结束 --> 10% SC / 90% EC
+##   SC 每 6h：60% 维持 / 8%×乘数 → TC / 12%×乘数 → EC
+##   EC 每 6h：5%×乘数 → SC / 0.5%×乘数 → TC（最多 2 次）/ 其余维持
+## 乘数：SST / 切变（见 _transition_multiplier，上限 ×12）。
 func update_transition(days: float) -> void:
 	var b := transition_index()
 	var gate := 0.0
@@ -308,18 +317,7 @@ func update_transition(days: float) -> void:
 					reverting = false
 					transition_days = 0.0
 					transition_target_days = clampf(Const.EXTRATROPICAL_TRANSITION_DAYS - 0.08 * bnorm, 0.15, Const.EXTRATROPICAL_TRANSITION_DAYS)
-					# 副热带子状态：≥TS + 环境落在 JTWC STC 分档（SST 24~26 / 切变 15~30 / 纬 25~40）
-					_st_rolled = false
-					_st_decided = false
-					subtype_st = false
-					if wind_kt >= 34.0 and sst_here >= 24.0 and sst_here <= 26.0 \
-							and shear_display >= 15.0 and shear_display <= 30.0 \
-							and latitude >= 25.0 and latitude <= 40.0:
-						# 出现概率 p_ST = 0.15（研究文档 11 号）
-						_st_rolled = _rng.randf() < 0.15
-						_st_decided = false
 				elif b >= Const.TRANSITION_STRONG_B:
-					# 非锋面 ET / 冷心消散：环境极强但失败 → 仍显示 EX，快速消散
 					phase = Phase.EXTRATROPICAL
 					cold_core_dissipate = true
 					transition_days = 0.0
@@ -328,7 +326,6 @@ func update_transition(days: float) -> void:
 		Phase.TRANSITIONING:
 			var fwd := maxf(0.1, transition_target_days)
 			if _tt_conditions_met():
-				# 只有苛刻的 TT 条件才允许回热带
 				if not reverting:
 					var progress := clampf(transition_days / fwd, 0.0, 1.0)
 					reverting = true
@@ -338,7 +335,6 @@ func update_transition(days: float) -> void:
 					phase = Phase.TROPICAL
 					transition_days = 0.0
 					reverting = false
-					subtype_st = false
 			else:
 				if reverting:
 					var progress2 := 1.0 - clampf(transition_days / rev, 0.0, 1.0)
@@ -346,28 +342,67 @@ func update_transition(days: float) -> void:
 					transition_days = progress2 * fwd
 				if b >= Const.TRANSITION_B_KEEP or transition_days > 0.0:
 					transition_days += days
-				# 副热带子状态：变性进度 30%~70% 之间显示 ST
-				var prog := clampf(transition_days / fwd, 0.0, 1.0)
-				if _st_rolled:
-					subtype_st = prog >= 0.30 and prog < 0.70
-					if prog >= 0.70 and not _st_decided:
-						_st_decided = true
-						subtype_st = false
-						# 80% 继续完成温带变性；20% 退回热带（TT，罕见）
-						if _rng.randf() < 0.20:
-							reverting = true
-							transition_days = (1.0 - prog) * rev
 				if transition_days >= fwd:
-					phase = Phase.EXTRATROPICAL
 					transition_days = 0.0
 					reverting = false
-					subtype_st = false
-					_maybe_et_burst()
-		Phase.EXTRATROPICAL:
-			if _tt_conditions_met():
-				phase = Phase.TRANSITIONING
-				reverting = true
-				transition_days = rev
+					phase_eval_days = 0.0
+					ec_to_tc_attempts = 0
+					# 用户 2026-11-08：变性结束 → 10% 落稳定副热带（SC），90% 落温带（EC）
+					if _rng.randf() < 0.10:
+						phase = Phase.SUBTROPICAL
+					else:
+						phase = Phase.EXTRATROPICAL
+						_maybe_et_burst()
+		Phase.SUBTROPICAL, Phase.EXTRATROPICAL:
+			# 稳定态：每 6 模拟小时（= 0.25 天）判定一次
+			phase_eval_days += days
+			while phase_eval_days >= 0.25:
+				phase_eval_days -= 0.25
+				_eval_stable_phase()
+
+
+## 稳定态（SC/EC）的 6h 判定
+func _eval_stable_phase() -> void:
+	var mult := _transition_multiplier()
+	var roll := _rng.randf()
+	if phase == Phase.SUBTROPICAL:
+		if roll < 0.60:
+			return                                   # 维持（副热带很稳定）
+		roll -= 0.60
+		if roll < 0.08 * mult:
+			phase = Phase.TROPICAL                     # 翻盘回热带
+			transition_days = 0.0
+			reverting = false
+		elif roll < 0.08 * mult + 0.12 * mult:
+			phase = Phase.EXTRATROPICAL                # 转温带
+			phase_eval_days = 0.0
+	else:
+		if roll < 0.05 * mult:
+			phase = Phase.SUBTROPICAL                  # 逆转第一步
+			phase_eval_days = 0.0
+		elif roll < 0.05 * mult + 0.005 * mult and ec_to_tc_attempts < 2:
+			ec_to_tc_attempts += 1
+			phase = Phase.TROPICAL                     # 极罕见直接回热带
+			transition_days = 0.0
+			reverting = false
+
+
+## SC ↔ TC/EC 的条件乘数：暖水 / 低切变对「回到热带」更有利
+func _transition_multiplier() -> float:
+	var m := 1.0
+	if sst_here > 26.5:
+		m *= 2.5
+	elif sst_here >= 24.0:
+		m *= 1.0
+	else:
+		m *= 0.2
+	if shear_display < 10.0:
+		m *= 2.5
+	elif shear_display <= 15.0:
+		m *= 1.0
+	else:
+		m *= 0.2
+	return clampf(m, 0.0, 12.0)
 
 
 ## ET burst（研究 §5）：约 1/5 变性后出现 6~12 小时 +5~15% 短时增强
@@ -379,7 +414,7 @@ func _maybe_et_burst() -> void:
 
 
 func _update_category() -> void:
-	if phase == Phase.TRANSITIONING and subtype_st:
+	if phase == Phase.SUBTROPICAL:
 		category = Const.CAT_SUBTROPICAL
 		reached_st = true
 		return
@@ -435,4 +470,6 @@ func category_text() -> String:
 			return "变性中"
 		Phase.EXTRATROPICAL:
 			return "温带气旋"
+		Phase.SUBTROPICAL:
+			return "副热带气旋"
 	return Const.category_label(category)
