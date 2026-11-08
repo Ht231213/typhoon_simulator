@@ -803,66 +803,41 @@ func _draw_track() -> void:
 
 
 ## 曲线细分数（每两个原始点之间采样的段数）
-const CURVE_SUBDIV := 8
+const CURVE_SUBDIV := 12
 
 
-## 单调三次 Hermite 插值（Fritsch–Carlson，用户 2026-11-08）：
-##   过所有原始点、且**不会过冲/回勾**（每个区间内单调）。
+## 曲线：**二次贝塞尔穿中点（切角）**（用户 2026-11-08 要求，绝不外凸）
+##   · 相邻两点的中点作为曲线经过点
+##   · 原始路径点作为控制点
+##   · 曲线完全落在控制多边形内 → 拐角被"削掉"，绝不会鼓出原始折线
 func _smooth_polyline(pts: PackedVector2Array) -> PackedVector2Array:
 	var n := pts.size()
 	if n < 2:
 		return pts
-	var xs := PackedFloat32Array()
-	var ys := PackedFloat32Array()
-	for k in n:
-		xs.append(pts[k].x)
-		ys.append(pts[k].y)
-	var mx := _monotone_tangents(xs)
-	var my := _monotone_tangents(ys)
 	var out := PackedVector2Array()
-	for seg in n - 1:
-		for sub in CURVE_SUBDIV:
-			var t := float(sub) / float(CURVE_SUBDIV)
-			var t2 := t * t
-			var t3 := t2 * t
-			var h00 := 2.0 * t3 - 3.0 * t2 + 1.0
-			var h10 := t3 - 2.0 * t2 + t
-			var h01 := -2.0 * t3 + 3.0 * t2
-			var h11 := t3 - t2
-			out.append(Vector2(
-				h00 * xs[seg] + h10 * mx[seg] + h01 * xs[seg + 1] + h11 * mx[seg + 1],
-				h00 * ys[seg] + h10 * my[seg] + h01 * ys[seg + 1] + h11 * my[seg + 1]
-			))
-	out.append(pts[n - 1])
+	# 段 1：pts[0] → mid0，控制点 pts[0]
+	out.append(pts[0])
+	var mid0 := (pts[0] + pts[1]) * 0.5
+	_append_quad(out, pts[0], pts[0], mid0)
+	# 中间段：mid(i-1) → mid(i)，控制点 pts[i]
+	for i in range(1, n - 1):
+		var a := (pts[i - 1] + pts[i]) * 0.5
+		var c := (pts[i] + pts[i + 1]) * 0.5
+		_append_quad(out, a, pts[i], c)
+	# 末段：mid(n-2) → pts[n-1]，控制点 pts[n-1]
+	var last_mid := (pts[n - 2] + pts[n - 1]) * 0.5
+	_append_quad(out, last_mid, pts[n - 1], pts[n - 1])
+	if out[out.size() - 1] != pts[n - 1]:
+		out.append(pts[n - 1])
 	return out
 
 
-## Fritsch–Carlson 单调三次切线
-func _monotone_tangents(v: PackedFloat32Array) -> PackedFloat32Array:
-	var n := v.size()
-	var d := PackedFloat32Array()
-	var m := PackedFloat32Array()
-	if n < 2:
-		return v
-	for k in n - 1:
-		d.append(v[k + 1] - v[k])
-	m.append(d[0])
-	for k in range(1, n - 1):
-		m.append((d[k - 1] + d[k]) * 0.5)
-	m.append(d[n - 2])
-	for k in n - 1:
-		if absf(d[k]) < 1e-9:
-			m[k] = 0.0
-			m[k + 1] = 0.0
-		else:
-			var a := m[k] / d[k]
-			var b := m[k + 1] / d[k]
-			var s := a * a + b * b
-			if s > 9.0:
-				var tau := 3.0 / sqrt(s)
-				m[k] = tau * a * d[k]
-				m[k + 1] = tau * b * d[k]
-	return m
+## 追加一段二次贝塞尔（不含起点）
+func _append_quad(out: PackedVector2Array, a: Vector2, b: Vector2, c: Vector2) -> void:
+	for k in range(1, CURVE_SUBDIV + 1):
+		var t := float(k) / float(CURVE_SUBDIV)
+		var p := a.lerp(b, t).lerp(b.lerp(c, t), t)
+		out.append(p)
 
 
 ## 画同色的一段曲线（solid 或 dashed，颜色取该段第一个点）
