@@ -999,6 +999,21 @@ static func tier_progress(kt: float) -> float:
 	return 0.0
 
 
+## 档内颜色渐变（Beta.5 版，用户 2026-11-08 选择恢复）：
+##   l 档 15→22 kt：0 → −25°（渐变成 D 的蓝）
+##   d 档 22→34 kt：0 → −57°（渐变成青绿）
+## 其它档位用素材里的 +/- 变体图标，不做染色。
+static func tier_hue_shift(kt: float) -> float:
+	const DELTAS: Array = [
+		[15.0, 22.0, -25.0],    # l → d
+		[22.0, 34.0, -57.0],    # d → ts
+	]
+	for d in DELTAS:
+		if kt >= float(d[0]) and kt < float(d[1]):
+			return tier_progress(kt) * float(d[2])
+	return 0.0
+
+
 static func category_label(cat: int) -> String:
 	match cat:
 		CAT_SUBTROPICAL: return "ST"

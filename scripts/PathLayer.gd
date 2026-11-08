@@ -81,10 +81,6 @@ var _tier_variants_cache := true
 ## 不能强制拉成正方形，否则画面内容会变小（用户 2026-11-08 报 EX 比其他图标小）。
 var _icon_ratio_cache: Dictionary = {}
 var _icon_ratio := 1.0
-## 档内 +/- 变体：第二个视频播放器（交叉淡化用，用户 2026-11-08）
-var _icon_video_alt: VideoStreamPlayer = null
-## 变体视频的权重 0..1（0=只用基础图标，1=只用变体）
-var _variant_w := 0.0
 
 # ------------------------- 其它特效播放器 -------------------------
 var _landfall_video: VideoStreamPlayer = null
@@ -113,8 +109,6 @@ func _ready() -> void:
 	_icon_video.loop = true
 	_icon_video_prev = _make_video("StormIconVideoPrev")
 	_icon_video_prev.loop = true
-	_icon_video_alt = _make_video("StormIconVideoAlt")
-	_icon_video_alt.loop = true
 	# type=single（单一图标）用：一张 png/jpg，不旋转不变色
 	_single_sprite = Sprite2D.new()
 	_single_sprite.name = "StormIconSingle"
@@ -166,11 +160,6 @@ func _on_settings_changed() -> void:
 
 
 func _stop_icon_videos() -> void:
-	if _icon_video_alt != null:
-		_icon_video_alt.stop()
-		_icon_video_alt.visible = false
-		_icon_video_alt.stream = null
-		_variant_w = 0.0
 	for p in [_icon_video, _icon_video_prev]:
 		if p != null:
 			p.stop()
@@ -254,33 +243,27 @@ func _icon_kind() -> String:
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
 		return "ex"
-	return _base_icon_kind()
+	# 用户 2026-11-07（Beta.5 恢复）：档内进度用素材里的 +/- 变体
+	var base_kind := _base_icon_kind()
+	if not GameSettings.tier_variants:
+		return base_kind
+	var prog := Const.tier_progress(live_intensity)
+	match base_kind:
+		"ts":
+			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.ts_plus"):
+				return "ts_plus"
+		"c2":
+			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c2_minus"):
+				return "c2_minus"
+		"c3":
+			if prog < 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c3_minus"):
+				return "c3_minus"
+		"c4":
+			if prog >= 0.5 and IconPacksLoader.has(icon_pack, "mainicon.icon.north.c4_plus"):
+				return "c4_plus"
+	return base_kind
 
 
-
-
-## 各基础档位的主色色相（取 TRACK_COLORS，与轨迹配色一致）
-func _kind_hue(kind: String) -> float:
-	var kt := 60.0
-	match kind:
-		"l": kt = 18.0
-		"d": kt = 27.0
-		"ts": kt = 49.0
-		"c1": kt = 73.0
-		"c2": kt = 90.0
-		"c3": kt = 105.0
-		"c4": kt = 125.0
-		"c5": kt = 150.0
-		"ex": return 0.0
-		"ss": return ST_TRACK_COLOR.h * 360.0
-		_: return 0.0
-	return Const.track_color(kt).h * 360.0
-
-
-## 旧档 → 新档 的最短色相差（度，范围 -180~180）
-func _tier_hue_delta(from_kind: String, to_kind: String) -> float:
-	var d := _kind_hue(from_kind) - _kind_hue(to_kind)
-	return wrapf(d, -180.0, 180.0)
 
 
 ## 基础档位（不含 ST / EX / 变体）
@@ -364,47 +347,7 @@ func _update_icon() -> void:
 	if _single_sprite != null:
 		_single_sprite.visible = false
 	# 档内 +/- 变体：计算基础图标、变体图标与权重（连续交叉淡化，不再 0.5 硬切）
-	var base_id := "mainicon.icon.north." + _base_icon_kind()
-	var variant_id := ""
-	var variant_w := 0.0
-	var p_tier := Const.tier_progress(live_intensity)
-	if GameSettings.tier_variants and IconPacksLoader.has_tier_variants(icon_pack):
-		var cand := ""
-		match _base_icon_kind():
-			"ts":
-				cand = "mainicon.icon.north.ts_plus"
-				variant_w = p_tier
-			"c4":
-				cand = "mainicon.icon.north.c4_plus"
-				variant_w = p_tier
-			"c2":
-				cand = "mainicon.icon.north.c2_minus"
-				variant_w = 1.0 - p_tier
-			"c3":
-				cand = "mainicon.icon.north.c3_minus"
-				variant_w = 1.0 - p_tier
-		if cand != "" and IconPacksLoader.has(icon_pack, cand):
-			variant_id = cand
-	var main_id := base_id
-	var alt_id := ""
-	var blend_w := 0.0
-	if variant_id != "":
-		if variant_w <= 0.02:
-			main_id = base_id
-		elif variant_w >= 0.98:
-			main_id = variant_id
-		else:
-			alt_id = variant_id
-			blend_w = variant_w
-	# 跨档颜色转场：基础档位变化时，新图标从旧档主色相回正（0.3 s）
-	var base_kind_now := _base_icon_kind()
-	if _prev_base_kind != "" and _prev_base_kind != base_kind_now and int(live_phase) < 1:
-		_trans_hue = _tier_hue_delta(_prev_base_kind, base_kind_now)
-		_trans_start = _trans_hue
-		_trans_start_ms = Time.get_ticks_msec()
-	# ⚠ 无论是否触发转场都要更新（否则每次 _update_icon 都重启转场）
-	_prev_base_kind = base_kind_now
-	var id := main_id
+	var id := current_icon_id()
 	_icon_tier = id.get_slice(".", 3) if id.count(".") >= 3 else id
 	var stream: VideoStream = IconPacksLoader.video(icon_pack, id)
 	if stream == null:
@@ -441,26 +384,6 @@ func _update_icon() -> void:
 	# 以台风中心为中心（变高也不偏移）
 	_icon_video.position = live_position - _icon_video.size * 0.5
 	_icon_video.visible = true
-	# 变体交叉淡化：p 在中间区间才开第二个播放器（两端停掉，省性能）
-	if alt_id != "" and _icon_video_alt != null:
-		var alt_stream: VideoStream = IconPacksLoader.video(icon_pack, alt_id)
-		if alt_stream != null:
-			if _icon_video_alt.stream != alt_stream:
-				_icon_video_alt.stream = alt_stream
-				_icon_video_alt.play()
-			_icon_video_alt.size = _icon_video.size
-			_icon_video_alt.position = _icon_video.position
-			_icon_video_alt.visible = true
-			# 相位对齐：跟主视频同步播放位置
-			_icon_video_alt.stream_position = fmod(maxf(_icon_video.stream_position, 0.0), VIDEO_PHASE_SECONDS)
-			_variant_w = blend_w
-		else:
-			_variant_w = 0.0
-	elif _icon_video_alt != null:
-		_variant_w = 0.0
-		_icon_video_alt.stop()
-		_icon_video_alt.visible = false
-		_icon_video_alt.stream = null
 	_reset_tint_target()
 	_update_tier_bright_target()
 	_apply_video_tint()
@@ -540,13 +463,6 @@ var _tint_gradient := 0.0
 ## 档内颜色渐变（已停用，保留 0）
 var _tier_hue_target := 0.0
 var _tier_hue_shown := 0.0
-## 跨档颜色转场（用户 2026-11-08）：新图标入场时从旧档色相回正，0.3 s
-const TIER_TRANSITION_SECONDS := 0.3
-var _trans_hue := 0.0
-var _trans_start := 0.0
-var _trans_start_ms := 0
-## 上一次的基础档位（用于检测跨档）
-var _prev_base_kind := ""
 ## 色相旋转（度）当前/目标/过渡时长
 var _hue_shown := 0.0
 var _hue_target := 0.0
@@ -588,30 +504,29 @@ func _reset_tint_target() -> void:
 
 
 func _apply_video_tint() -> void:
-	for p in [_icon_video, _icon_video_prev, _icon_video_alt]:
+	for p in [_icon_video, _icon_video_prev]:
 		if p != null and p.material is ShaderMaterial:
 			(p.material as ShaderMaterial).set_shader_parameter("tint", _tint_shown)
-			var extra := _trans_hue if p == _icon_video else 0.0
-			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown + extra)
+			(p.material as ShaderMaterial).set_shader_parameter("hue_shift_deg", _hue_shown)
 			(p.material as ShaderMaterial).set_shader_parameter("tier_hue_deg", _tier_hue_shown)
 
 
 func _apply_video_alpha() -> void:
 	if _icon_video != null:
-		var a := (1.0 - _video_fade) * _icon_fade * (1.0 - _variant_w)
+		var a := (1.0 - _video_fade) * _icon_fade
 		_icon_video.modulate = Color(1, 1, 1, clampf(a, 0.0, 1.0))
-	if _icon_video_alt != null and _icon_video_alt.visible:
-		var aa := (1.0 - _video_fade) * _icon_fade * _variant_w
-		_icon_video_alt.modulate = Color(1, 1, 1, clampf(aa, 0.0, 1.0))
 	if _icon_video_prev != null:
 		_icon_video_prev.modulate = Color(1, 1, 1, clampf(_video_fade * _icon_fade, 0.0, 1.0))
 
 
 ## 档内颜色渐变（只对 advanced/adv_extend 的视频图标；single/内置不生效）
 func _update_tier_bright_target() -> void:
-	# 用户 2026-11-08 结论：素材内部颜色恒定，没有「档内渐变」→ 全部不做档内染色。
-	# （保留函数名，避免其他地方调用报错；目标恒为 0）
-	_tier_hue_target = 0.0
+	# Beta.5 档内染色（用户 2026-11-08 选择回退到这版）
+	var tn := IconPacksLoader.type_of(icon_pack)
+	if tn != "advanced" and tn != "adv_extend":
+		_tier_hue_target = 0.0
+		return
+	_tier_hue_target = Const.tier_hue_shift(live_intensity)
 
 
 func _advance_video_fade(delta: float) -> void:
@@ -663,16 +578,6 @@ func _process(delta: float) -> void:
 					_icon_ratio = ratio
 					_icon_video.size = Vector2(d2, d2 * ratio)
 					_icon_video.position = live_position - _icon_video.size * 0.5
-
-	# 跨档颜色转场：线性回正（0.3 s）
-	if _trans_start_ms > 0:
-		var elapsed := float(Time.get_ticks_msec() - _trans_start_ms) / 1000.0
-		var remain := clampf(1.0 - elapsed / TIER_TRANSITION_SECONDS, 0.0, 1.0)
-		_trans_hue = _trans_start * remain
-		if remain <= 0.0:
-			_trans_hue = 0.0
-			_trans_start_ms = 0
-		_apply_video_tint()
 
 	# 档内颜色平滑（0.25 s，避免跨档时闪一下）
 	if absf(_tier_hue_shown - _tier_hue_target) > 0.05:

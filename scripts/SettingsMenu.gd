@@ -28,7 +28,9 @@ extends Control
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
 ## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
-var pack_option: OptionButton = null
+var pack_toggle: Button = null
+var pack_items_box: VBoxContainer = null
+var _pack_item_buttons: Array[Button] = []
 ## 扫描到的方案包名（下拉项顺序 = 这个数组）
 var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
@@ -107,15 +109,28 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	# 方案选择：和「单位」一样用原生 OptionButton（外观统一，用户 2026-11-08）
-	# ⚠ 版本不匹配不染黄（OptionButton 没有单项颜色 API），改成方案名后面加 " ⚠" 标记。
-	pack_option = _add_option_row(page, "方案", "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取")
-	# 宽度固定 200（和「单位」一致）；长方案名裁剪，不再被最长项撑宽
-	pack_option.fit_to_longest_item = false
-	pack_option.clip_text = true
-	pack_option.custom_minimum_size = Vector2(200, 44)
+	# 方案选择：可折叠的行内列表（用户 2026-11-08）
+	var pack_row := HBoxContainer.new()
+	pack_row.add_theme_constant_override("separation", 14)
+	page.add_child(pack_row)
+	var pack_label := Label.new()
+	pack_label.custom_minimum_size = Vector2(130, 0)
+	pack_label.add_theme_font_size_override("font_size", 19)
+	pack_label.text = "方案"
+	pack_row.add_child(pack_label)
+	pack_toggle = Button.new()
+	pack_toggle.custom_minimum_size = Vector2(200, 44)
+	pack_toggle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	pack_toggle.add_theme_font_size_override("font_size", 19)
+	pack_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pack_toggle.tooltip_text = "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取"
+	pack_toggle.pressed.connect(_toggle_pack_list)
+	pack_row.add_child(pack_toggle)
+	pack_items_box = VBoxContainer.new()
+	pack_items_box.add_theme_constant_override("separation", 2)
+	pack_items_box.visible = false
+	page.add_child(pack_items_box)
 	_refresh_pack_options()
-	pack_option.item_selected.connect(_on_pack_selected)
 
 	tier_variants_check = CheckBox.new()
 	tier_variants_check.text = "启用等级扩展图标"
@@ -135,25 +150,53 @@ func _build_preset_page() -> void:
 	pages.move_child(pages.get_child(pages.get_child_count() - 1), 0)
 
 
-## 重新扫描方案包并填充下拉（每次打开设置都扫，用户新放文件夹立刻可见）
+## 重新扫描方案包并重建折叠列表（用户新放文件夹立刻可见）
 func _refresh_pack_options() -> void:
-	if pack_option == null:
+	if pack_toggle == null:
 		return
 	_pack_names = GameSettings.pack_options()
-	pack_option.clear()
+	for b in _pack_item_buttons:
+		b.queue_free()
+	_pack_item_buttons.clear()
 	for i in _pack_names.size():
 		var name := _pack_names[i]
-		# 版本不匹配 → 名称后加 ⚠（OptionButton 无法单项染色，用户 2026-11-08）
-		if not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name):
-			pack_option.add_item(name + " ⚠")
-		else:
-			pack_option.add_item(name)
-	if _pack_names.is_empty():
-		pack_option.add_item("（无方案包）")
-		pack_option.disabled = true
-	else:
-		pack_option.disabled = false
-	pack_option.select(_current_pack_index())
+		var mismatch := not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name)
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(200, 36)
+		btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		btn.add_theme_font_size_override("font_size", 18)
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.text = name + (" ⚠" if mismatch else "")
+		btn.pressed.connect(_on_pack_item_pressed.bind(i))
+		pack_items_box.add_child(btn)
+		_pack_item_buttons.append(btn)
+	pack_toggle.disabled = _pack_names.is_empty()
+	pack_items_box.visible = false
+	_update_pack_toggle_text()
+
+
+func _update_pack_toggle_text() -> void:
+	var arrow := " ▾" if (pack_items_box != null and pack_items_box.visible) else " ▸"
+	var name := GameSettings.icon_pack if not _pack_names.is_empty() else "（无方案包）"
+	if pack_toggle != null:
+		pack_toggle.text = name + arrow
+	for i in _pack_item_buttons.size():
+		if i >= _pack_names.size():
+			break
+		var base := _pack_names[i]
+		var mismatch := not GameSettings.is_builtin_pack(base) and not IconPacks.version_ok(base)
+		var mark := "● " if base == GameSettings.icon_pack else "   "
+		_pack_item_buttons[i].text = mark + base + (" ⚠" if mismatch else "")
+
+
+func _toggle_pack_list() -> void:
+	pack_items_box.visible = not pack_items_box.visible
+	_update_pack_toggle_text()
+
+
+## 折叠列表里选中某个方案
+func _on_pack_item_pressed(index: int) -> void:
+	_on_pack_selected(index)
 
 
 ## 当前选中的方案索引（找不到 = 0）
@@ -257,6 +300,9 @@ func _on_pack_selected(index: int) -> void:
 	if index < 0 or index >= _pack_names.size():
 		return
 	GameSettings.set_icon_pack(_pack_names[index])
+	if pack_items_box != null:
+		pack_items_box.visible = false
+		_update_pack_toggle_text()
 	if tier_variants_check != null:
 		tier_variants_check.visible = _tier_variants_available()
 
