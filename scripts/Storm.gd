@@ -366,16 +366,21 @@ func _eval_stable_phase() -> void:
 	var mult := _transition_multiplier()
 	var roll := _rng.randf()
 	if phase == Phase.SUBTROPICAL:
-		if roll < 0.60:
-			return                                   # 维持（副热带很稳定）
-		roll -= 0.60
-		if roll < 0.08 * mult:
+		# 用户 2026-11-09（met-researcher 结论，见 _sc_transition_probs）：
+		#   真实里「稳定存在的 SC」偏冷/高纬时**更常转温带**（EC:TC ≈2:1~3:1），
+		#   只有暖水/低纬/弱切变时才可能回热带（概率可反转为 TC 略大）。
+		#   每 6 模拟小时一次；量级参照真实 TC→ET（多数完成温带化，退回热带是少数）。
+		var probs := _sc_transition_probs()
+		var p_ec: float = probs.x          # SC → 温带
+		var p_tc: float = probs.y          # SC → 热带（TT）
+		if roll < p_ec:
+			phase = Phase.EXTRATROPICAL                # 转温带
+			phase_eval_days = 0.0
+		elif roll < p_ec + p_tc:
 			phase = Phase.TROPICAL                     # 翻盘回热带
 			transition_days = 0.0
 			reverting = false
-		elif roll < 0.08 * mult + 0.12 * mult:
-			phase = Phase.EXTRATROPICAL                # 转温带
-			phase_eval_days = 0.0
+		# 其余 → 维持
 	else:
 		if roll < 0.05 * mult:
 			phase = Phase.SUBTROPICAL                  # 逆转第一步
@@ -385,6 +390,42 @@ func _eval_stable_phase() -> void:
 			phase = Phase.TROPICAL                     # 极罕见直接回热带
 			transition_days = 0.0
 			reverting = false
+
+
+## SC（副热带气旋）每 6 模拟小时的去向概率 `(SC→EC, SC→TC)`。
+## 依据（met-researcher 2026-11-09，详见 docs/研究/11-副热带气旋与ET中间态.md）：
+##   · SC 定义本身带「显著斜压成分 / 上层冷心」，相态介于 TC 与 EX 之间；
+##     稳定 SC 在**冷/高纬**更常走温带（EC:TC ≈2:1~3:1），**暖水低纬**才偏回热带。
+##   · 参照真实 TC→ET：西太约 **40%** 台风最终完成 ET、平均过渡 ~18h
+##     （Kitabatake 2011）→「完成温带化是大概率、退回热带是少数」。
+##   · 每 6h 总转换率取 12~18%；因为 `_transition_multiplier()` 最大 12×，
+##     旧算法 `0.08×12=0.96` 会让 SC 在暖水低纬「一判定就回热带」，
+##     现在改为按环境三档显式取值，并**夹到 ≤0.35**（每 6h 最多 35%）。
+## 三档（每 6h）：
+##   冷/高纬（SST<25 / lat>35 / 切变>25 命中≥2）：EC 0.15、TC 0.03
+##   中间（其余）：                                  EC 0.10、TC 0.06
+##   暖/低纬（SST>26.5 / lat<30 / 切变<15 命中≥2）：EC 0.06、TC 0.10
+func _sc_transition_probs() -> Vector2:
+	var cold := 0
+	if sst_here < 25.0:
+		cold += 1
+	if latitude > 35.0:
+		cold += 1
+	if shear_display > 25.0:
+		cold += 1
+	var warm := 0
+	if sst_here > 26.5:
+		warm += 1
+	if latitude < 30.0:
+		warm += 1
+	if shear_display < 15.0:
+		warm += 1
+	var p := Vector2(0.10, 0.06)              # 中间档：EC 0.10 / TC 0.06（≈2:1）
+	if cold >= 2:
+		p = Vector2(0.15, 0.03)               # 冷/高纬：EC:TC = 5:1
+	elif warm >= 2:
+		p = Vector2(0.06, 0.10)               # 暖/低纬：可反转
+	return Vector2(minf(p.x, 0.35), minf(p.y, 0.35))
 
 
 ## SC ↔ TC/EC 的条件乘数：暖水 / 低切变对「回到热带」更有利

@@ -262,9 +262,10 @@ const EXT_BANDS: Array = [
 
 
 func _icon_kind() -> String:
-	# 副热带稳定态（Phase.SUBTROPICAL=3）：用 ss 图标（包内没有 → 程序化渲染兜底）
+	# 副热带稳定态（Phase.SUBTROPICAL=3）：按官方风速分档选图标
+	#   22~33 kt 副热带低压 → sd；34+ 副热带风暴 → ss（SMCY1.3 两个素材都有，2026-11-09）
 	if int(live_phase) == 3:
-		return "ss"
+		return "sd" if live_intensity < 34.0 else "ss"
 	# 用户 2026-11-06：**一开始变性（phase>=1）就切 EX 图标**，不要还按热带等级换
 	if int(live_phase) >= 1:
 		return "ex"
@@ -937,8 +938,10 @@ func _track_color_at(kt: float, phase: int) -> Color:
 	#   B 副热带 ST：≤33 #40BFFF 浅蓝 / ≥34 #40FFCF 青绿
 	#   C 温带 EX：≤64 #F0F0F0 灰白 / >64 #EFEF00 黄
 	if phase == int(Storm.Phase.SUBTROPICAL):
-		# 只实现「副热带风暴」一档 → 固定青绿（用户 2026-11-08）
-		return Color8(64, 255, 207)
+		# 用户 2026-11-08 官方表 B 组：副热带低压 #40BFFF 浅蓝 / 副热带风暴 #40FFCF 青绿
+		# 官方分档 22~33 kt → SD、34+ → SS（与图标 sd/ss 同一阈值：kt < 34 为 SD）
+		# （2026-11-09 补了 SD 图标后恢复两档；之前因「副热带低压未加入」临时固定青绿）
+		return Color8(64, 191, 255) if kt < 34.0 else Color8(64, 255, 207)
 	if phase == int(Storm.Phase.EXTRATROPICAL):
 		return Color8(240, 240, 240) if kt <= 64.0 else Color8(239, 239, 0)
 	return Const.track_color(kt)
