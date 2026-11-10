@@ -37,9 +37,6 @@ var idle_boost := false
 var clamp_at_year_end := false
 
 var _day_accumulator := 0.0
-## 暂停时间轴时的冻结季节海温（第一次用到时捕获，解冻后失效）
-var _frozen_amp := 0.0
-var _frozen_valid := false
 
 
 ## 当前速度：每「天」需要多少真实秒。值来自 `config/simulation.cfg`
@@ -153,14 +150,11 @@ func is_idle_speed() -> bool:
 ## ⚠ 幅度和平均海温**不再是常量**：玩家可以在「模拟设置」里调
 ##   （GameSettings.seasonal_amplitude / mean_sst，出厂默认值来自 Const）。
 ##   每次现取，所以改设置后立刻生效，不用重启。
+##
+## ⚠ 用户 2026-11-10 报 bug：暂停时间轴后手动改日期，海温不跟着变。
+##   根因是旧实现把第一次算出的值缓存成 `_frozen_amp`，暂停期间日期改了也不重算。
+##   现在**不缓存**：暂停时间轴本来就不推进日历 → 按当前 month 算出的值天然就是常量；
+##   手动改日期 / 改平均海温 / 改季节增幅都会立刻按新值重算。
 func seasonal_sst_amplitude() -> float:
-	var amp := sin(deg_to_rad((month - 5) * 30.0)) * GameSettings.seasonal_amplitude \
+	return sin(deg_to_rad((month - 5) * 30.0)) * GameSettings.seasonal_amplitude \
 		+ (GameSettings.mean_sst - 30.0)
-	if GameSettings.pause_timeline:
-		# 冻结在开启那一刻的值；解冻后恢复正常计算
-		if not _frozen_valid:
-			_frozen_amp = amp
-			_frozen_valid = true
-		return _frozen_amp
-	_frozen_valid = false
-	return amp

@@ -95,8 +95,10 @@ const BEST_TRACK_FORMATS: Array[String] = ["noaa", "cma"]
 var wind_unit_index := 0
 
 # ------------------------- 图标方案包（2026-11-05）-------------------------
-## 启用「等级扩展图标」（+/- 变体）：默认开（用户 2026-11-07 要求做成游戏内勾选框）。
-var tier_variants := true
+## 启用「等级扩展图标」（+/- 变体）。
+## ⚠ 用户 2026-11-10：**默认关闭**（之前是默认开）。方案包是否「有这个能力」看
+##   index.json 的 `tier_variants: true`（决定勾选框是否显示），默认值本身由这里决定。
+var tier_variants := false
 ## 暂停时间轴（2026-11-08）：日期/月份不推进、季节海温冻结；台风照常运行。
 ## ⚠ 放在「环境参数」里算作弊项：冻结季节变化会改变难度。
 var pause_timeline := false
@@ -281,6 +283,8 @@ func _save() -> void:
 	cfg.set_value("video", "fullscreen", fullscreen)
 	cfg.set_value("video", "icon_pack", icon_pack)
 	cfg.set_value("video", "tier_variants", tier_variants)
+	# 迁移标记（用户 2026-11-10）：写过一次之后不再强制关「等级扩展图标」
+	cfg.set_value("video", "tier_variants_migrated_v120", true)
 	cfg.set_value("sim", "pause_timeline", pause_timeline)
 	# 模拟设置
 	cfg.set_value("sim", "mean_sst", mean_sst)
@@ -327,6 +331,11 @@ func _load() -> void:
 	var packs := IconPacksLoader.pack_names()
 	icon_pack = saved_pack if (is_builtin_pack(saved_pack) or packs.has(saved_pack)) else DEFAULT_PACK
 	tier_variants = bool(cfg.get_value("video", "tier_variants", tier_variants))
+	# 用户 2026-11-10：等级扩展图标**默认关闭**（旧默认是 true）。
+	# 老 settings.cfg 里可能存着 true → 做一次性迁移：没有迁移标记就强制关；
+	# 之后玩家自己勾开的会正常保存（_save 会写标记），不会被反复关掉。
+	if not bool(cfg.get_value("video", "tier_variants_migrated_v120", false)):
+		tier_variants = false
 	pause_timeline = bool(cfg.get_value("sim", "pause_timeline", pause_timeline))
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)

@@ -13,6 +13,9 @@ config_version=5
 config/name="Typhoon"
 config/version="1.2.0"
 run/main_scene="res://TitleScreen.tscn"
+; 用户 2026-11-10（⑤）：限制最大 FPS，防止「暂停 / 回到主菜单」时没有 vsync 的机器上
+; 引擎全速空转把 GPU 顶到 95%+（正常运行没问题，但空场景帧率可以冲到几百上千）。
+run/max_fps=60
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 

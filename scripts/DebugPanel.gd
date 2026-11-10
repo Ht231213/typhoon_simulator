@@ -357,9 +357,12 @@ func _nudge(key: String, delta: float) -> void:
 				s.wind_kt = maxf(0.0, s.wind_kt + delta)
 		"phase":
 			if s != null:
-				s.phase = ((s.phase + int(delta)) % 3 + 3) % 3
-				if s.phase != Storm.Phase.TROPICAL:
-					s.transition_days = 0.0
+				# 用户 2026-11-10：F6 的「变性阶段」必须能循环到全部 4 档。
+				# 旧代码 %3 → 永远切不到 SUBTROPICAL（副热带），用户以为没加。
+				s.phase = ((int(s.phase) + int(delta)) % 4 + 4) % 4
+				s.transition_days = 0.0
+				s.phase_eval_days = 0.0
+				s.reverting = false
 		"peak":
 			if s != null:
 				s.peak_wind_kt = maxf(0.0, s.peak_wind_kt + delta)

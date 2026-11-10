@@ -76,13 +76,22 @@ static func load_index(pack: String) -> Dictionary:
 	var empty := {"version": ICON_PACK_VERSION_MAX, "type": "advanced", "objects": {}}
 	if pack == "":
 		return empty
+	# ⚠ 2026-11-10 性能修复（④ C4+ 卡顿根因）：
+	#   旧缓存戳记每次都 `get_file_as_string()` 把整份 index.json 读一遍来算长度，
+	#   实测单次 load_index ≈ 1.4 ms；PathLayer._update_icon 每 tick 调 5~7 次
+	#   → 单个物理 tick 光查表就 10 ms+，帧率掉到个位数。
+	#   现在：**先查缓存**（连 pack_root / 文件 stat 都不做），且 0.5 s 内直接命中。
+	var now_ms := Time.get_ticks_msec()
+	var cached: Dictionary = _index_cache.get(pack, {})
+	if not cached.is_empty() and now_ms - int(cached.get("check_ms", -100000)) < 500:
+		return cached.get("data", empty)
 	var root := pack_root(pack)
 	var idx_path := root.path_join("index.json")
 	if not FileAccess.file_exists(idx_path):
 		return empty
-	var stamp := "%d|%d" % [FileAccess.get_modified_time(idx_path), FileAccess.get_file_as_string(idx_path).length()]
-	var cached: Dictionary = _index_cache.get(pack, {})
-	if cached.get("stamp", "") == stamp:
+	var mtime := FileAccess.get_modified_time(idx_path)
+	if not cached.is_empty() and int(cached.get("mtime", -1)) == mtime:
+		cached["check_ms"] = now_ms
 		return cached.get("data", empty)
 	var text := FileAccess.get_file_as_string(idx_path)
 	var parsed: Variant = JSON.parse_string(text)
@@ -183,7 +192,7 @@ static func load_index(pack: String) -> Dictionary:
 	var data := {"version": "%d~%d" % [vmin, vmax], "vmin": vmin, "vmax": vmax,
 		"tier_variants": tier_variants,
 		"type": type, "icon_size": icon_size, "objects": table, "effects": effects}
-	_index_cache[pack] = {"stamp": stamp, "data": data}
+	_index_cache[pack] = {"mtime": mtime, "check_ms": now_ms, "data": data}
 	print("[IconPacks] index %s：version=%d~%d type=%s 条目=%d effect=%d" % [pack, vmin, vmax, type, table.size(), effects.size()])
 	# type=single 只允许两个 ID（用户 2026-11-06）
 	if type == "single":

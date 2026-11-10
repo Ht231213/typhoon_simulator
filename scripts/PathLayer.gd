@@ -375,6 +375,19 @@ func _update_icon() -> void:
 	# 档内 +/- 变体：计算基础图标、变体图标与权重（连续交叉淡化，不再 0.5 硬切）
 	var id := current_icon_id()
 	_icon_tier = id.get_slice(".", 3) if id.count(".") >= 3 else id
+	# ⚠ 2026-11-10 性能修复（④ 卡顿）：_update_icon() 是每个物理 tick 都被调用的，
+	#   同档时没必要每次都做资源查找；只更新「尺寸/位置」和「强度变化时的调色」。
+	if id == _icon_video_id and _icon_video != null and _icon_video.stream != null \
+			and not _procedural_icon and _icon_video.visible:
+		var d_same := icon_diameter_for(icon_diameter, live_intensity)
+		_icon_video.size = Vector2(d_same, d_same * _icon_ratio)
+		_icon_video.position = live_position - _icon_video.size * 0.5
+		if absf(live_intensity - _tint_kt_cache) > 0.01:
+			_tint_kt_cache = live_intensity
+			_reset_tint_target()
+			_update_tier_bright_target()
+			_apply_video_tint()
+		return
 	var stream: VideoStream = IconPacksLoader.video(icon_pack, id)
 	if stream == null:
 		# 方案包没有这个 ID（或没有方案）→ 程序化渲染
@@ -414,6 +427,7 @@ func _update_icon() -> void:
 	_update_tier_bright_target()
 	_apply_video_tint()
 	_apply_video_alpha()
+	_tint_kt_cache = live_intensity
 	queue_redraw()
 
 
@@ -492,6 +506,8 @@ var _tier_hue_shown := 0.0
 ## 色相旋转（度）当前/目标/过渡时长
 var _hue_shown := 0.0
 var _hue_target := 0.0
+## 上次做过调色目标计算的强度（同档每 tick 调用时避免重复查 effect；见 _update_icon 快速路径）
+var _tint_kt_cache := -999.0
 
 
 func _target_tint() -> Dictionary:
@@ -933,16 +949,18 @@ func _draw_dashed_polyline(smooth: PackedVector2Array, cols: PackedColorArray) -
 
 ## 当前位置的颜色：变性后用白/浅蓝，否则按强度
 func _track_color_at(kt: float, phase: int) -> Color:
-	# 用户 2026-11-08：官方表分 3 组
-	#   A 热带：按风速 10 段（Const.track_color）
+	# 用户 2026-11-08 官方表分 3 组；2026-11-10 修正「变性中」：
+	#   A 热带（**仅 phase=TROPICAL**）：按风速 10 段（Const.track_color）
 	#   B 副热带 ST：≤33 #40BFFF 浅蓝 / ≥34 #40FFCF 青绿
-	#   C 温带 EX：≤64 #F0F0F0 灰白 / >64 #EFEF00 黄
+	#   C 温带 EX **与变性中 TRANSITIONING**：≤64 #F0F0F0 灰白 / >64 #EFEF00 黄
+	#     （用户 2026-11-10：已经在变性了，不应再显示热带气旋配色）
 	if phase == int(Storm.Phase.SUBTROPICAL):
 		# 用户 2026-11-08 官方表 B 组：副热带低压 #40BFFF 浅蓝 / 副热带风暴 #40FFCF 青绿
 		# 官方分档 22~33 kt → SD、34+ → SS（与图标 sd/ss 同一阈值：kt < 34 为 SD）
 		# （2026-11-09 补了 SD 图标后恢复两档；之前因「副热带低压未加入」临时固定青绿）
 		return Color8(64, 191, 255) if kt < 34.0 else Color8(64, 255, 207)
-	if phase == int(Storm.Phase.EXTRATROPICAL):
+	if phase != int(Storm.Phase.TROPICAL):
+		# 温带 / 变性中：两档灰白 ↔ 黄
 		return Color8(240, 240, 240) if kt <= 64.0 else Color8(239, 239, 0)
 	return Const.track_color(kt)
 
