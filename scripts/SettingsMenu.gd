@@ -28,14 +28,19 @@ extends Control
 
 ## 「预设」页的控件（用代码建，避免手改 .tscn）
 ## 2026-11-05 起：三个下拉合成一个「方案」（= 一个 zip 方案包）
-var pack_toggle: Button = null
-var pack_items_box: VBoxContainer = null
-var _pack_item_buttons: Array[Button] = []
-## 扫描到的方案包名（下拉项顺序 = 这个数组）
+## 2026-11-10 用户要求：改回**原生 OptionButton 下拉框**（之前是折叠行内列表）
+var pack_option: OptionButton = null
+## 方案下拉框右侧的「数据包版本不兼容」提示（只在当前包版本不兼容时显示）
+var pack_warn: Label = null
+## 扫描到的方案包名（下拉项顺序 = 这个数组，item id = 下标）
 var _pack_names: Array[String] = []
 var unit_option: OptionButton = null
 ## 「启用等级扩展图标」勾选框（用户 2026-11-07）
 var tier_variants_check: CheckBox = null
+
+## 数据包版本不兼容时：整个下拉框 + 右侧提示都用**半透明黄**（用户 2026-11-10）
+const PACK_WARN_TEXT := "数据包版本不兼容"
+const PACK_WARN_COLOR := Color(1.0, 0.85, 0.2, 0.55)
 
 ## 关闭时的回调（由打开方注入）
 var on_closed: Callable = Callable()
@@ -109,7 +114,7 @@ func _add_option_row(page: VBoxContainer, label_text: String, tooltip: String) -
 func _build_preset_page() -> void:
 	var page := _new_scroll_page("预设")
 
-	# 方案选择：可折叠的行内列表（用户 2026-11-08）
+	# 方案选择：**原生下拉框**（用户 2026-11-10 要求改回 OptionButton）
 	var pack_row := HBoxContainer.new()
 	pack_row.add_theme_constant_override("separation", 14)
 	page.add_child(pack_row)
@@ -118,18 +123,22 @@ func _build_preset_page() -> void:
 	pack_label.add_theme_font_size_override("font_size", 19)
 	pack_label.text = "方案"
 	pack_row.add_child(pack_label)
-	pack_toggle = Button.new()
-	pack_toggle.custom_minimum_size = Vector2(200, 44)
-	pack_toggle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	pack_toggle.add_theme_font_size_override("font_size", 19)
-	pack_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	pack_toggle.tooltip_text = "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取"
-	pack_toggle.pressed.connect(_toggle_pack_list)
-	pack_row.add_child(pack_toggle)
-	pack_items_box = VBoxContainer.new()
-	pack_items_box.add_theme_constant_override("separation", 2)
-	pack_items_box.visible = false
-	page.add_child(pack_items_box)
+	pack_option = OptionButton.new()
+	# 用户 2026-10-31：控件不用占满横向，200 px 足够（和最佳路径的选择框一致）
+	pack_option.custom_minimum_size = Vector2(200, 44)
+	pack_option.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	pack_option.add_theme_font_size_override("font_size", 19)
+	pack_option.tooltip_text = "方案包（assets/icons/<名字>/）：图标、登陆特效、音效都从里面取"
+	pack_option.item_selected.connect(_on_pack_selected)
+	pack_row.add_child(pack_option)
+	# ⚠ 用户 2026-11-10：版本不兼容时，在下拉框**正右方**（间距 14 px，远小于 150 px）显示提示
+	pack_warn = Label.new()
+	pack_warn.text = PACK_WARN_TEXT
+	pack_warn.visible = false
+	pack_warn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	pack_warn.add_theme_font_size_override("font_size", 17)
+	pack_warn.add_theme_color_override("font_color", PACK_WARN_COLOR)
+	pack_row.add_child(pack_warn)
 	_refresh_pack_options()
 
 	tier_variants_check = CheckBox.new()
@@ -150,53 +159,59 @@ func _build_preset_page() -> void:
 	pages.move_child(pages.get_child(pages.get_child_count() - 1), 0)
 
 
-## 重新扫描方案包并重建折叠列表（用户新放文件夹立刻可见）
+## 重新扫描方案包并重建下拉项（用户新放文件夹立刻可见）。
+## 版本不兼容的方案：下拉项文字后加 ⚠；**当前选中的**不兼容包 → 下拉框整体半透明黄 + 右侧提示。
 func _refresh_pack_options() -> void:
-	if pack_toggle == null:
+	if pack_option == null:
 		return
 	_pack_names = GameSettings.pack_options()
-	for b in _pack_item_buttons:
-		b.queue_free()
-	_pack_item_buttons.clear()
+	pack_option.clear()
 	for i in _pack_names.size():
-		var name := _pack_names[i]
-		var mismatch := not GameSettings.is_builtin_pack(name) and not IconPacks.version_ok(name)
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(200, 36)
-		btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		btn.add_theme_font_size_override("font_size", 18)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.text = name + (" ⚠" if mismatch else "")
-		btn.pressed.connect(_on_pack_item_pressed.bind(i))
-		pack_items_box.add_child(btn)
-		_pack_item_buttons.append(btn)
-	pack_toggle.disabled = _pack_names.is_empty()
-	pack_items_box.visible = false
-	_update_pack_toggle_text()
+		var item_name := _pack_names[i]
+		pack_option.add_item(item_name + (" ⚠" if _pack_mismatch(item_name) else ""), i)
+	pack_option.select(_current_pack_index())
+	pack_option.disabled = _pack_names.is_empty()
+	_apply_pack_warning(_selected_pack_mismatch())
 
 
-func _update_pack_toggle_text() -> void:
-	var arrow := " ▾" if (pack_items_box != null and pack_items_box.visible) else " ▸"
-	var name := GameSettings.icon_pack if not _pack_names.is_empty() else "（无方案包）"
-	if pack_toggle != null:
-		pack_toggle.text = name + arrow
-	for i in _pack_item_buttons.size():
-		if i >= _pack_names.size():
-			break
-		var base := _pack_names[i]
-		var mismatch := not GameSettings.is_builtin_pack(base) and not IconPacks.version_ok(base)
-		var mark := "● " if base == GameSettings.icon_pack else "   "
-		_pack_item_buttons[i].text = mark + base + (" ⚠" if mismatch else "")
+## 某个方案包是否「版本不兼容」（内置方案永远兼容）
+static func _pack_mismatch(pack_name: String) -> bool:
+	return not GameSettings.is_builtin_pack(pack_name) and not IconPacks.version_ok(pack_name)
 
 
-func _toggle_pack_list() -> void:
-	pack_items_box.visible = not pack_items_box.visible
-	_update_pack_toggle_text()
+## 当前加载中的方案是否版本不兼容（不在列表里 → 当兼容处理）
+func _selected_pack_mismatch() -> bool:
+	var current := GameSettings.icon_pack
+	if not _pack_names.has(current):
+		return false
+	return _pack_mismatch(current)
 
 
-## 折叠列表里选中某个方案
-func _on_pack_item_pressed(index: int) -> void:
-	_on_pack_selected(index)
+## 版本不兼容提示：整个下拉框染半透明黄（字色 + 各状态底框/边框），右侧提示文字可见。
+## 兼容时移除所有覆盖，恢复主题默认外观（用户 2026-11-10）
+func _apply_pack_warning(on: bool) -> void:
+	if pack_option == null:
+		return
+	const COLOR_SLOTS: Array[String] = [
+		"font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]
+	const STYLE_SLOTS: Array[String] = ["normal", "hover", "pressed", "focus"]
+	if on:
+		for slot in COLOR_SLOTS:
+			pack_option.add_theme_color_override(slot, PACK_WARN_COLOR)
+		var box := StyleBoxFlat.new()
+		box.bg_color = Color(1.0, 0.85, 0.2, 0.18)     # 半透明黄底
+		box.border_color = PACK_WARN_COLOR
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(4)
+		for slot in STYLE_SLOTS:
+			pack_option.add_theme_stylebox_override(slot, box)
+	else:
+		for slot in COLOR_SLOTS:
+			pack_option.remove_theme_color_override(slot)
+		for slot in STYLE_SLOTS:
+			pack_option.remove_theme_stylebox_override(slot)
+	if pack_warn != null:
+		pack_warn.visible = on
 
 
 ## 当前选中的方案索引（找不到 = 0）
@@ -295,14 +310,12 @@ func _on_tier_variants_toggled(pressed: bool) -> void:
 	GameSettings.set_tier_variants(pressed)
 
 
-## 方案包：立即生效 + 落盘
+## 方案包：立即生效 + 落盘；版本不兼容的包 → 下拉框变半透明黄 + 右侧提示
 func _on_pack_selected(index: int) -> void:
 	if index < 0 or index >= _pack_names.size():
 		return
 	GameSettings.set_icon_pack(_pack_names[index])
-	if pack_items_box != null:
-		pack_items_box.visible = false
-		_update_pack_toggle_text()
+	_apply_pack_warning(_selected_pack_mismatch())
 	if tier_variants_check != null:
 		tier_variants_check.visible = _tier_variants_available()
 

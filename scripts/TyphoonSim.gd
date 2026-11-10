@@ -964,11 +964,11 @@ func rebuild_sfx() -> void:
 	_setup_sfx()
 
 
-## 最佳路径记录开关：风季模式**强制开启**（风季必须记录），否则跟随玩家设置。
+## 最佳路径记录开关：跟随玩家设置（用户 2026-11-10：风季模式不再强制开启）。
 ## 「勾选后开始记录此后新诞生的台风」——已经跑着的那个不补记，
 ## 因为 begin_track 只在 _start_storm 里调。
 func _sync_best_track_state() -> void:
-	best_track.recording = season_mode or GameSettings.best_track_enabled
+	best_track.recording = GameSettings.best_track_enabled
 	# 导出格式跟着设置走（中途切格式不清空已有轨迹：采样与格式无关，一年只写一次文件）
 	best_track.format_id = GameSettings.best_track_format
 

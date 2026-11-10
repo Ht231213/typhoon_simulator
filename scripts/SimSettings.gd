@@ -185,9 +185,12 @@ func _normalize_control_widths() -> void:
 ##   ┌──────────────────┬──────────────────────────────────────────────┐
 ##   │ 进游戏前          │ 全部可改                                      │
 ##   │ 进游戏后·非风季   │ 模式 / 风季 → 禁用（模拟已经开跑，改了也没用）；  │
-##   │                  │ 单位 / 海温 / 季节增幅 / 记录扰动 / 最佳路径可改  │
-##   │ 进游戏后·风季     │ 只有「单位」可改；最佳路径**强制开启且不可关**    │
+##   │                  │ 其余全部可改                                  │
+##   │ 进游戏后·风季     │ 只锁「环境参数」区块：平均海温 / 季节海温增幅 /  │
+##   │                  │ 暂停时间轴（调这些等于作弊）；                  │
+##   │                  │ 模拟选项（记录扰动 / 最佳路径 / 导出方式）可改   │
 ##   └──────────────────┴──────────────────────────────────────────────┘
+## 用户 2026-11-10：非作弊项不能被风季模式锁住（之前是把除单位外全锁了）。
 func set_context(p_in_game: bool, p_season: bool) -> void:
 	_in_game = p_in_game
 	_season = p_season
@@ -204,25 +207,21 @@ func set_context(p_in_game: bool, p_season: bool) -> void:
 
 	# ② 单位：任何上下文都能改。它只影响显示（侧栏/战报读哪个单位），不碰物理。
 
-	# ③ 风季模式里除了单位以外全部锁死；非风季的进游戏后则都还能改。
-	var others_editable := not (p_in_game and p_season)
-	_set_editable(mean_sst_spin, others_editable)
-	_dim_label(mean_sst_label, not others_editable)
-	_set_editable(seasonal_amp_spin, others_editable)
-	_dim_label(seasonal_amp_label, not others_editable)
-	_set_editable(record_disturbances_check, others_editable)
+	# ③ **风季模式只锁「环境参数」区块**（用户 2026-11-10）：
+	#    平均海温 / 季节海温增幅 / 暂停时间轴 → 禁用（改这些会影响/冻结物理，算作弊）。
+	var env_editable := not (p_in_game and p_season)
+	_set_editable(mean_sst_spin, env_editable)
+	_dim_label(mean_sst_label, not env_editable)
+	_set_editable(seasonal_amp_spin, env_editable)
+	_dim_label(seasonal_amp_label, not env_editable)
+	if pause_timeline_check != null:
+		_set_editable(pause_timeline_check, env_editable)
 
-	# ④ 最佳路径：风季模式「必须记录」，所以直接设成勾上再锁住，不给玩家关掉的机会。
-	#    ⚠ 这里**故意不写 GameSettings.best_track_enabled** —— 风季必须记录是规则，
-	#      不是玩家的设置，写进存档会让玩家回到主菜单后看到它莫名其妙亮着。
-	#      `TyphoonSim._sync_best_track_state()` 里也是这么算的
-	#      （`recording = season_mode or GameSettings.best_track_enabled`）。
-	#      离开风季上下文时还原成存储里的真实值，别在界面上留下假状态。
-	if p_in_game and p_season:
-		best_track_check.set_pressed_no_signal(true)
-	else:
-		best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
-	_set_editable(best_track_check, others_editable)
+	# ④ 模拟选项（非作弊项）：记录扰动 / 最佳路径 / 导出方式——**风季模式下也保持可改**。
+	#    （之前风季会强制勾上最佳路径再锁死；用户 2026-11-10 要求可以自己改。）
+	_set_editable(record_disturbances_check, true)
+	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
+	_set_editable(best_track_check, true)
 	_update_dir_row()
 
 
@@ -267,9 +266,11 @@ func default_best_track_dir() -> String:
 	return base.path_join(BEST_TRACK_DIR_NAME)
 
 
-## 当前上下文是否「强制记录最佳路径」（= 进游戏后 + 风季）。
+## 当前上下文是否「强制记录最佳路径」。
+## 用户 2026-11-10：风季模式不再强制记录（只锁环境参数，最佳路径可自己改）→ 永远 false。
+## 保留函数名以兼容旧调用。
 func is_best_track_forced() -> bool:
-	return _in_game and _season
+	return false
 
 
 ## 实际要不要记录最佳路径：玩家勾了 **或** 风季模式强制记录。
@@ -388,11 +389,10 @@ func _persist() -> void:
 	settings_changed.emit()
 
 
-## 导出路径 / 导出方式只有在「勾了最佳路径」且「当前上下文允许改最佳路径」时才可用。
+## 导出方式 / 导出路径：只有勾了「最佳路径数据集」才可改。
+## 用户 2026-11-10：风季模式下也允许改（非作弊项），所以这里不再看 _in_game/_season。
 func _update_dir_row() -> void:
-	var can_edit := not (_in_game and _season)
-	var on := can_edit and best_track_check.button_pressed
-	# 导出方式跟导出路径同一套规则（风季里禁用 → 和勾选框一起锁）
+	var on := best_track_check.button_pressed
 	_set_editable(best_track_format_option, on)
 	_dim_label(best_track_format_label, not on)
 
