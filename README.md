@@ -1,6 +1,6 @@
 # 台风模拟器 Typhoon Simulator
 
-**版本 1.3.0-beta.1** · Godot 4.7.2 · 由 Scratch / TurboWarp 工程移植重制
+**版本 1.3.0-beta.2** · Godot 4.7.2 · 由 Scratch / TurboWarp 工程移植重制
 
 > ## 🎵 音乐版权声明（请先读）
 >
