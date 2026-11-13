@@ -93,4 +93,5 @@ func _on_start() -> void:
 	Game.mode = _mode
 	Game.season_mode = _season
 	MusicManager.stop_sim()
-	get_tree().change_scene_to_file(GAME_SCENE)
+	# 走淡入淡出过渡，别硬切（硬切进游戏会「闪」一下）
+	SceneTransition.change_scene(GAME_SCENE)

@@ -33,14 +33,15 @@ extends PanelContainer
 const PATH_ROW_HEIGHT := 36.0
 const CANCEL_ROW_HEIGHT := 36.0
 
-@onready var date_dialog: AcceptDialog = %DateDialog
-@onready var month_spin: SpinBox = %MonthSpin
-@onready var day_spin: SpinBox = %DaySpin
-
+## 日期弹窗（1.3.0：换成场景内的自定义面板，见 scripts/ui/date_panel.gd）
+## 旧版用的是 AcceptDialog（独立系统窗口，主题改不动、也没有动画）。
+var _date_panel: Control = null
 
 func _ready() -> void:
 	# 侧栏要在「暂停模拟」和「ESC 全暂停」两种情况下都能操作
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	_apply_style()
 
 	add_button.pressed.connect(_on_add_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
@@ -50,7 +51,8 @@ func _ready() -> void:
 	undo_point_button.pressed.connect(_on_undo_point_pressed)
 	cancel_button.pressed.connect(_on_cancel_pressed)
 
-	date_dialog.confirmed.connect(_on_date_confirmed)
+	# 日期弹窗是场景内节点（GameRoot/DatePanel），等它 _ready 注册进 group 之后再连信号
+	_bind_date_panel.call_deferred()
 
 	sim.state_changed.connect(refresh)
 	sim.storm_finished.connect(_on_storm_finished)
@@ -62,6 +64,48 @@ func _ready() -> void:
 	path_editor.placement_changed.connect(_on_placement_changed)
 
 	refresh()
+	_play_intro()
+
+
+# ============================ 1.3.0 皮肤 ============================
+# ⚠ 只动外观与透明度动画：不改 Sidebar 的 custom_minimum_size、不改 SideRows 的布局参数，
+#   所以地图区域（HBoxContainer 里 size_flags_horizontal=3 的 MapArea）尺寸和形状完全不变。
+
+func _apply_style() -> void:
+	# 侧栏底板：深色 + 左侧一条冰蓝分界线（和主界面的斜切语言呼应）
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(0.031, 0.043, 0.059, 0.96)
+	panel.border_width_left = 3
+	panel.border_color = Color(0.55, 0.88, 1.0, 0.70)
+	panel.content_margin_left = 16.0
+	panel.content_margin_right = 16.0
+	panel.content_margin_top = 14.0
+	panel.content_margin_bottom = 14.0
+	add_theme_stylebox_override("panel", panel)
+
+	# 台风信息框：半透明白卡
+	var info := StyleBoxFlat.new()
+	info.bg_color = Color(1, 1, 1, 0.045)
+	info.border_color = Color(1, 1, 1, 0.12)
+	info.set_border_width_all(1)
+	info.set_corner_radius_all(8)
+	info.set_content_margin_all(10)
+	info_box.add_theme_stylebox_override("panel", info)
+
+	title_label.add_theme_color_override("font_color", Color(0.55, 0.88, 1.0, 1.0))
+	title_label.add_theme_font_size_override("font_size", 21)
+	info_label.add_theme_color_override("font_color", Color(0.93, 0.96, 0.99, 0.88))
+	notice_label.add_theme_color_override("font_color", Color(0.72, 0.80, 0.87, 0.62))
+
+
+## 进游戏时按钮自下而上错开淡入（只改 alpha，不改位置/尺寸，布局零影响）
+func _play_intro() -> void:
+	var all: Array[Control] = [add_button, undo_point_button, clear_points_button,
+		cancel_button, pause_button, stop_button, date_button]
+	for i in all.size():
+		var b := all[i]
+		b.modulate.a = 0.0
+		UiKit.tween_float(self, b, "modulate:a", 1.0, 0.34, &"out_quad", 0.035 * float(i))
 
 
 ## 每帧只刷新文字，不重建按钮状态（避免每帧做布局计算）
@@ -212,12 +256,20 @@ func _on_stop_pressed() -> void:
 
 
 func _on_date_pressed() -> void:
-	month_spin.value = SimClock.month
-	day_spin.value = SimClock.day
-	date_dialog.popup_centered()
+	if _date_panel == null:
+		_bind_date_panel()
+	if _date_panel != null:
+		_date_panel.call("open", SimClock.month, SimClock.day)
 
 
-func _on_date_confirmed() -> void:
-	sim.set_date(int(month_spin.value), int(day_spin.value))
+## 日期弹窗确认：写回日期并刷新面板（逻辑与旧 AcceptDialog 版本完全一致）
+func _on_date_committed(month: int, day: int) -> void:
+	sim.set_date(month, day)
 	refresh()
+
+
+func _bind_date_panel() -> void:
+	_date_panel = get_tree().get_first_node_in_group("date_panel")
+	if _date_panel != null and not _date_panel.is_connected("confirmed", _on_date_committed):
+		_date_panel.connect("confirmed", _on_date_committed)
 

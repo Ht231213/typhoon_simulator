@@ -61,6 +61,10 @@ func _ready() -> void:
 	flat = true
 	for slot in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
 		add_theme_stylebox_override(slot, StyleBoxEmpty.new())
+	# Button 自己的 text 绘制要藏起来（文字由 _label 画，才能做「被白色填充反相」）
+	for slot in ["font_color", "font_hover_color", "font_pressed_color",
+			"font_focus_color", "font_disabled_color", "font_hover_pressed_color"]:
+		add_theme_color_override(slot, Color(0, 0, 0, 0))
 
 	_plate = Plate.new()
 	_plate.name = "Plate"
@@ -70,7 +74,7 @@ func _ready() -> void:
 	add_child(_plate)
 	_plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	_label = UiKit.make_label(label_text, label_size, label_color)
+	_label = UiKit.make_label(_display_text(), label_size, label_color)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	# ⚠ 不要用 PRESET_FULL_RECT：锚点左右不等时手动设 size 会被引擎覆盖并刷警告。
@@ -86,17 +90,43 @@ func _ready() -> void:
 	_apply()
 
 
+## 显示的文字：优先 label_text（新界面用），否则用 Button.text（局内侧栏 / 暂停菜单沿用的旧写法）
+func _display_text() -> String:
+	return label_text if label_text != "" else text
+
+
+## 字号：局内那些按钮自带 theme_override_font_sizes/font_size，沿用它，
+## 免得侧栏里原本 14~17 px 的按钮被统一放大成 26 px。
+func _label_font_size() -> int:
+	if has_theme_font_size_override("font_size"):
+		return get_theme_font_size("font_size")
+	return label_size
+
+
+## 局内那些按钮是直接改 .text / .disabled 的，这里每帧兜一次（成本极低，只比较字符串）
+func _process(_delta: float) -> void:
+	if _label != null:
+		var want := _display_text()
+		if _label.text != want:
+			_label.text = want
+	# 禁用态统一淡出。⚠ 只淡化子节点，不动按钮自身的 modulate：
+	#   外层进场动画用的是 button.modulate.a，两者相乘才不会互相覆盖。
+	var a := 0.42 if disabled else 1.0
+	if not is_equal_approx(_label.modulate.a, a):
+		_label.modulate = Color(1, 1, 1, a)
+		_plate.modulate = Color(1, 1, 1, a)
+
+
 func set_enabled(value: bool) -> void:
 	_enabled = value
 	disabled = not value
-	modulate = Color(1, 1, 1, 1) if value else Color(1, 1, 1, 0.38)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if value else Control.CURSOR_FORBIDDEN
 
 
 func _on_resized() -> void:
 	if _label == null:
 		return
-	_label.add_theme_font_size_override("font_size", label_size)
+	_label.add_theme_font_size_override("font_size", _label_font_size())
 	var dx := size.y * slant * text_shift_ratio
 	_label.position = Vector2(dx, 0.0)
 	_label.size = Vector2(maxf(size.x - dx, 1.0), size.y)

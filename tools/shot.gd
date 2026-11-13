@@ -16,6 +16,10 @@ var _wait_seconds := -1.0
 var _open := ""
 var _hover := -1
 var _page := -1
+var _action := ""
+var _mouse := Vector2.ZERO
+var _moused := false
+var _acted := false
 var _opened := false
 var _hovered := false
 var _paged := false
@@ -34,6 +38,12 @@ func _initialize() -> void:
 			_frames = int(a.substr(9))
 		elif a.begins_with("--wait="):
 			_wait_seconds = float(a.substr(7))
+		elif a.begins_with("--action="):
+			_action = a.substr(9)
+		elif a.begins_with("--mouse="):
+			var parts := a.substr(8).split(",")
+			if parts.size() == 2:
+				_mouse = Vector2(float(parts[0]), float(parts[1]))
 		elif a.begins_with("--open="):
 			_open = a.substr(7)
 		elif a.begins_with("--hover="):
@@ -54,6 +64,25 @@ func _process(delta: float) -> bool:
 	if _done:
 		return true
 	_elapsed += delta
+	# 触发某个动作（例如打开 ESC 暂停菜单）
+	if _action != "" and not _acted and _elapsed > 1.0:
+		_acted = true
+		var act_scene := root.get_child(root.get_child_count() - 1)
+		if _action == "pause":
+			var pause := act_scene.get_node_or_null("PauseLayer")
+			if pause != null:
+				pause.call("pause")
+				print("[shot] pause opened")
+		elif _action == "date":
+			var dp := act_scene.get_node_or_null("DatePanel")
+			if dp != null:
+				dp.call("open", 6, 20)
+				print("[shot] date panel opened")
+	# 把鼠标挪到指定坐标（验证悬停效果）
+	if _mouse != Vector2.ZERO and not _moused and _elapsed > 1.2:
+		_moused = true
+		root.warp_mouse(_mouse)
+		print("[shot] mouse -> ", _mouse)
 	# 需要打开子界面时：主界面进场动画走完再点进去
 	if _open != "" and not _opened and _elapsed > 1.35:
 		_opened = true
