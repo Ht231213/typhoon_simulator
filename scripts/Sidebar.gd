@@ -38,6 +38,8 @@ const CANCEL_ROW_HEIGHT := 36.0
 var _date_panel: Control = null
 ## 侧栏背景（自绘，用来做「先飞入」）
 var _bg: SkewPanel = null
+## 进场动画只允许播一次（否则会看到「菜单出现两次」）
+var _enter_played := false
 
 func _ready() -> void:
 	# 侧栏要在「暂停模拟」和「ESC 全暂停」两种情况下都能操作
@@ -66,9 +68,9 @@ func _ready() -> void:
 	path_editor.placement_changed.connect(_on_placement_changed)
 
 	refresh()
-	# 进场动画由 game_intro.gd 统一编排（地图飞入 → 面板背景飞入 → 内容依次出现）；
-	# 独立加载 Sidebar 时也兜底播一次。
-	play_enter.call_deferred(0.0)
+	# ⚠ 进场动画只由 game_intro.gd 触发，这里绝不能再自动播一次 ——
+	#   两边的调用会各播一遍，玩家看到的就是「右边菜单出现两次」。
+	#   （没有 game_intro 的场景里侧栏就是直接可见，不再做兜底。）
 
 
 # ============================ 1.3.0 皮肤 ============================
@@ -113,7 +115,13 @@ func _build_background() -> void:
 
 
 ## delay 之后：背景飞入 → 标题 / 信息卡 / 各按钮 / 提示文字依次出现（同一个等待队列）
+## ⚠ 只生效一次：任何重复调用都会把 alpha 归零重播，表现为「菜单出现两次」。
 func play_enter(delay: float = 0.0) -> void:
+	if _enter_played:
+		print("[sidebar] play_enter 重复调用，已忽略（避免播两次）")
+		return
+	_enter_played = true
+	print("[sidebar] play_enter 首次调用 delay=", delay)
 	await get_tree().process_frame           # 等容器把尺寸算出来，pivot 才有意义
 	if _bg == null:
 		_build_background()
@@ -136,6 +144,14 @@ func play_enter(delay: float = 0.0) -> void:
 		UiKit.tween_float(self, c, "modulate:a", 1.0, 0.24, &"out_quad", t)
 		UiKit.tween_vec2(self, c, "scale", Vector2.ONE, 0.32, &"out_cubic", t)
 		t += 0.055
+
+
+## 兜底：如果 1 秒内没人调 play_enter（没有 game_intro 的场景），自己播一次
+## ⚠ 当前 _ready 不再调用它 —— 留着是为了单独调试侧栏时手动触发。
+func _enter_fallback() -> void:
+	await get_tree().create_timer(1.0).timeout
+	if not _enter_played and is_inside_tree():
+		play_enter(0.0)
 
 
 ## 立即把内容归零（进场前用，避免闪一下）
