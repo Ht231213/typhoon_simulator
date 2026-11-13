@@ -1,7 +1,4 @@
 extends Control
-## ⚠ 2.0 起停用：「模拟单台」界面已换成 scripts/ui/sim_setup_panel.gd（三个平行四边形选项卡）。
-##   保留此文件只为对照 1.x 的说明文案与 Game.mode / season_mode 写入逻辑。
-##
 ## 模拟设置界面。从开始菜单点「模拟单台」后打开。
 ##
 ## 控件按整改要求：

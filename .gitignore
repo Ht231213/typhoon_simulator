@@ -46,7 +46,3 @@ _tmp_export/
 # 测试/临时文件
 test.ogg
 test.ogg.import
-
-# 2.0：本机运行环境（引擎 + Godot 用户数据 + 截图），一律留在工程目录内，不进仓库
-godoteng/
-.local/

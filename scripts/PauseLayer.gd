@@ -19,8 +19,7 @@ extends CanvasLayer
 @onready var hint_label: Label = %Hint
 
 ## 设置界面场景（打开时实例化，与主菜单共用同一份）
-## 2.0：换成新的版式（左侧竖向 tab + 右侧背景），ESC 菜单与主菜单观感统一
-const SETTINGS_SCENE := "res://AppSettingsPanel.tscn"
+const SETTINGS_SCENE := "res://SettingsMenu.tscn"
 var _settings: Control = null
 
 
