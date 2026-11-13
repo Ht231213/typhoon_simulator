@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://cwpp53abjjvq7" path="res://PauseLayer.tscn" id="9_pause"]
 [ext_resource type="Script" path="res://scripts/ui/skew_button.gd" id="10_skew"]
 [ext_resource type="Script" path="res://scripts/ui/date_panel.gd" id="11_date"]
+[ext_resource type="Script" path="res://scripts/ui/game_intro.gd" id="12_intro"]
 
 [node name="GameRoot" type="Control" unique_id=1260962457]
 layout_mode = 3
@@ -45,25 +46,27 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="MapLayer" type="Node2D" parent="View/MapArea" unique_id=1606845993]
+[node name="MapSlide" type="Node2D" parent="View/MapArea"]
+
+[node name="MapLayer" type="Node2D" parent="View/MapArea/MapSlide" unique_id=1606845993]
 unique_name_in_owner = true
 
-[node name="MapSprite" type="Sprite2D" parent="View/MapArea/MapLayer" unique_id=2134457641]
+[node name="MapSprite" type="Sprite2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2134457641]
 unique_name_in_owner = true
 texture_filter = 1
 position = Vector2(540, 432)
 scale = Vector2(0.36, 0.36)
 texture = ExtResource("2_map")
 
-[node name="GridOverlay" type="Node2D" parent="View/MapArea/MapLayer" unique_id=138385389]
+[node name="GridOverlay" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=138385389]
 unique_name_in_owner = true
 script = ExtResource("3_field")
 
-[node name="PathLayer" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2143226245]
+[node name="PathLayer" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2143226245]
 unique_name_in_owner = true
 script = ExtResource("4_path")
 
-[node name="TyphoonSim" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2108909530]
+[node name="TyphoonSim" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2108909530]
 unique_name_in_owner = true
 script = ExtResource("6_sim")
 
@@ -208,3 +211,6 @@ visible = false
 layout_mode = 1
 
 [node name="PauseLayer" parent="." unique_id=1648842156 instance=ExtResource("9_pause")]
+
+[node name="GameIntro" type="Node" parent="."]
+script = ExtResource("12_intro")

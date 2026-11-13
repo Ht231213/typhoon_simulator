@@ -44,6 +44,7 @@ func _build() -> void:
 	_season_button = add_button("风季模式 · 关", Vector2(CONTENT_X, 428.0), Vector2(COL_W, BTN_H), 21)
 	_season_button.pressed.connect(_on_season_pressed)
 
+	_preload_game()
 	_desc = UiKit.make_body("…", 15, UiKit.TEXT_DIM)
 	add_at(_desc, Vector2(CONTENT_X, 500.0), Vector2(COL_W + 110.0, 96.0))
 
@@ -64,6 +65,23 @@ func _on_mode_pressed(mode: int) -> void:
 func _on_season_pressed() -> void:
 	_season = not _season
 	_refresh()
+
+
+## 打开面板后，等它自己的进场动画播完，再悄悄把 GameRoot 实例化好（只建树、不跑 _ready）。
+## 这样点「开始模拟」时省掉 200 ms 以上的加载停顿，卡顿就不会落在磁贴翻转里。
+var _game_inst: Node = null
+
+
+func _preload_game() -> void:
+	if _game_inst != null:
+		return
+	ResourceLoader.load_threaded_request(GAME_SCENE)
+	await get_tree().create_timer(0.7).timeout
+	if not is_inside_tree():
+		return
+	var packed: PackedScene = load(GAME_SCENE)
+	if packed != null:
+		_game_inst = packed.instantiate()
 
 
 func _refresh() -> void:
@@ -93,5 +111,14 @@ func _on_start() -> void:
 	Game.mode = _mode
 	Game.season_mode = _season
 	MusicManager.stop_sim()
-	# 走淡入淡出过渡，别硬切（硬切进游戏会「闪」一下）
-	SceneTransition.change_scene(GAME_SCENE)
+	# 主界面淡出 → 切场景（GameRoot 内部再播「地图飞入 / 面板飞入 / 内容依次出现」）
+	var inst := _game_inst
+	_game_inst = null          # 交出去了，别在 _exit_tree 里当成垃圾释放掉
+	SceneTransition.change_scene(GAME_SCENE, inst)
+
+
+## 没进游戏就退出去的话，把预实例化但没用上的场景释放掉
+func _exit_tree() -> void:
+	if _game_inst != null:
+		_game_inst.queue_free()
+		_game_inst = null

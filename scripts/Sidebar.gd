@@ -36,6 +36,8 @@ const CANCEL_ROW_HEIGHT := 36.0
 ## 日期弹窗（1.3.0：换成场景内的自定义面板，见 scripts/ui/date_panel.gd）
 ## 旧版用的是 AcceptDialog（独立系统窗口，主题改不动、也没有动画）。
 var _date_panel: Control = null
+## 侧栏背景（自绘，用来做「先飞入」）
+var _bg: SkewPanel = null
 
 func _ready() -> void:
 	# 侧栏要在「暂停模拟」和「ESC 全暂停」两种情况下都能操作
@@ -64,24 +66,18 @@ func _ready() -> void:
 	path_editor.placement_changed.connect(_on_placement_changed)
 
 	refresh()
-	_play_intro()
+	# 进场动画由 game_intro.gd 统一编排（地图飞入 → 面板背景飞入 → 内容依次出现）；
+	# 独立加载 Sidebar 时也兜底播一次。
+	play_enter.call_deferred(0.0)
 
 
 # ============================ 1.3.0 皮肤 ============================
-# ⚠ 只动外观与透明度动画：不改 Sidebar 的 custom_minimum_size、不改 SideRows 的布局参数，
+# ⚠ 只动外观与透明度/缩放动画：不改 Sidebar 的 custom_minimum_size、不改 SideRows 的布局参数，
 #   所以地图区域（HBoxContainer 里 size_flags_horizontal=3 的 MapArea）尺寸和形状完全不变。
 
 func _apply_style() -> void:
-	# 侧栏底板：深色 + 左侧一条冰蓝分界线（和主界面的斜切语言呼应）
-	var panel := StyleBoxFlat.new()
-	panel.bg_color = Color(0.031, 0.043, 0.059, 0.96)
-	panel.border_width_left = 3
-	panel.border_color = Color(0.55, 0.88, 1.0, 0.70)
-	panel.content_margin_left = 16.0
-	panel.content_margin_right = 16.0
-	panel.content_margin_top = 14.0
-	panel.content_margin_bottom = 14.0
-	add_theme_stylebox_override("panel", panel)
+	# 面板背景改由 _bg 这个自绘节点负责（好做「飞入」动画），stylebox 留空
+	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 
 	# 台风信息框：半透明白卡
 	var info := StyleBoxFlat.new()
@@ -98,14 +94,56 @@ func _apply_style() -> void:
 	notice_label.add_theme_color_override("font_color", Color(0.72, 0.80, 0.87, 0.62))
 
 
-## 进游戏时按钮自下而上错开淡入（只改 alpha，不改位置/尺寸，布局零影响）
-func _play_intro() -> void:
-	var all: Array[Control] = [add_button, undo_point_button, clear_points_button,
-		cancel_button, pause_button, stop_button, date_button]
-	for i in all.size():
-		var b := all[i]
-		b.modulate.a = 0.0
-		UiKit.tween_float(self, b, "modulate:a", 1.0, 0.34, &"out_quad", 0.035 * float(i))
+# ---------------------------- 进场动画 ----------------------------
+# 用户要的顺序：**面板背景先飞入 → 然后文字和按钮在同一个队列里从上往下依次出现**。
+# 位移不能用（容器会覆盖 position），所以统一用 alpha + scale（不影响布局）。
+
+## 面板背景：从右侧往左展开（scale.x 0.94 → 1），拖一条冰蓝左边缘
+func _build_background() -> void:
+	_bg = SkewPanel.new()
+	_bg.name = "Backdrop"
+	_bg.slant = 0.0                     # 侧栏是矩形，不要斜切
+	_bg.corner_radius = 0.0
+	_bg.edge_width = 0.0
+	_bg.accent_width = 3.0              # 左侧那条冰蓝线
+	_bg.accent = Color(0.55, 0.88, 1.0, 0.70)
+	_bg.fill = Color(0.031, 0.043, 0.059, 0.96)
+	add_child(_bg)
+	move_child(_bg, 0)
+
+
+## delay 之后：背景飞入 → 标题 / 信息卡 / 各按钮 / 提示文字依次出现（同一个等待队列）
+func play_enter(delay: float = 0.0) -> void:
+	await get_tree().process_frame           # 等容器把尺寸算出来，pivot 才有意义
+	if _bg == null:
+		_build_background()
+	_bg.pivot_offset = Vector2(_bg.size.x, _bg.size.y * 0.5)
+	_bg.scale = Vector2(0.94, 1.0)
+	_bg.modulate.a = 0.0
+	UiKit.tween_float(self, _bg, "modulate:a", 1.0, 0.26, &"out_cubic", delay)
+	UiKit.tween_vec2(self, _bg, "scale", Vector2.ONE, 0.42, &"out_cubic", delay)
+
+	# 同一个队列：标题 → 信息卡 → 按钮 → 提示（隐藏的项也排队，免得之后突然冒出来）
+	var queue: Array[Control] = [title_label, info_box, add_button, path_buttons_row,
+		cancel_row, pause_button, stop_button, date_button, notice_label]
+	var t := delay + 0.16
+	for c in queue:
+		if c == null:
+			continue
+		c.pivot_offset = c.size * 0.5
+		c.modulate.a = 0.0
+		c.scale = Vector2(0.97, 0.97)
+		UiKit.tween_float(self, c, "modulate:a", 1.0, 0.24, &"out_quad", t)
+		UiKit.tween_vec2(self, c, "scale", Vector2.ONE, 0.32, &"out_cubic", t)
+		t += 0.055
+
+
+## 立即把内容归零（进场前用，避免闪一下）
+func _prepare_hidden() -> void:
+	for c in [title_label, info_box, add_button, path_buttons_row, cancel_row,
+			pause_button, stop_button, date_button, notice_label]:
+		if c != null:
+			c.modulate.a = 0.0
 
 
 ## 每帧只刷新文字，不重建按钮状态（避免每帧做布局计算）
