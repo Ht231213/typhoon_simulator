@@ -1,6 +1,17 @@
 # 台风模拟器 Typhoon Simulator
 
-**版本 1.2.0** · Godot 4.7.2 · 由 Scratch / TurboWarp 工程移植重制
+**版本 1.3.0-beta.1** · Godot 4.7.2 · 由 Scratch / TurboWarp 工程移植重制
+
+> ## 🎵 音乐版权声明（请先读）
+>
+> **本作的启动动画音乐与主界面背景音乐，取自《Phigros》的开屏音乐（Phigros OST）。**
+> **音乐著作权归 Pigeon Games（鸽游）及原曲作者所有，本工程不主张任何音乐权利。**
+> 该音频仅作为个人二次创作 / 同人演示使用：从本地录屏中提取、裁掉首尾空白后作为一段
+> 可循环的 `assets/audio/boot_theme.wav`（141.86 s）内置进工程与发行包。
+> **禁止将本工程或其发行包用于任何商业用途**；如需商用或再分发，请自行替换为已获授权的音乐
+> （把文件放成 `assets/audio/title_loop.ogg` 即可整体替换，启动动画与主界面会一起换掉）。
+>
+> 游戏内也在三处做了标注：启动动画底部、主界面左下角、设置 → 音频页。
 
 一个把「西北太平洋台风」做成可玩模拟器的游戏：你自己画台风路径，然后看它在真实的海温场、
 风切变、地形和季节里怎么发展、怎么登陆、怎么消散。
@@ -370,3 +381,47 @@ best_track_dir=""     ; 空 = 游戏根目录下的 BestTrack/；相对路径按
 - **Web 版暂停提供（2026-10-31）**：SMCY1.3 图标改用视频（Theora `.ogv`）后，浏览器不再支持，
   因此只发 Windows 包；`export_presets.cfg` 里的 Web 预设保留（以后可能恢复）。
   原来的 44 张 SMCY 两层 PNG 已**归档到工程外**（`G:\typhoon\temp\smcy1_3_png_backup\`，未删除）。
+
+## 十三、1.3.0（界面重做）
+
+**范围**：本次只重做「启动动画 + 主界面 + 主界面三个入口的界面」，模拟内核（TyphoonSim / PathLayer /
+OceanField / BestTrack 导出）一行没动，**线上功能按计划推迟到以后**。
+
+| 项目 | 1.2.x | 1.3.0 |
+| --- | --- | --- |
+| 启动 | 直接进主界面 | `BootIntro.tscn`：全黑 → 缓出 `Hetao\|Minedsa` → 标题 + 单色台风图标 → BGM 爆发时闪白 → 白光散去露出主界面（任意键跳过） |
+| 主界面按钮 | 直角方块 | 圆角平行四边形，左右边斜率与背景分界线同一常数（`UiKit.SLANT = 0.45`）；悬停上浮 + 白色从左填充、文字反相 |
+| 切换菜单 | 直接弹窗 | 菜单按按钮**从上到下依次向左移出**，背景大图形沿分界线滑出，子界面再推入（左边操作、右边背景） |
+| 模拟单台 | `SettingsPanel` 弹层 | `SimSetupPanel`：模式三选一 + 风季开关 + 说明 + 开始/返回 |
+| ACE 存档 | `AcceptDialog` 文本框 | `AceBoardPanel`：分类切换、汇总、平行四边形行榜（前三名高亮） |
+| 设置 | `SettingsMenu` 选项卡窗口 | `AppSettingsPanel`：左侧竖向 tab + 右侧内容（ESC 暂停菜单共用同一个面板） |
+| 音乐 | 无（标题 BGM 撤版权） | **《Phigros》开屏曲**（见文首版权声明）：`assets/audio/boot_theme.wav` 同时作为启动曲与主界面循环（141.86 s，末尾 0.6 s 交叉淡化），统一由 `MusicManager` 播放、切场景不重来；「音乐音量」滑块因此重新出现 |
+
+**代码位置**（新文件都在 `scripts/ui/`）：
+
+- `ui_kit.gd` — 配色、**单调缓动库**（`out_cubic`/`out_quint`/`out_quad`/`out_expo`/`out_sine`/`in_cubic`/`in_quad`/`in_out`，
+  全部保证单调、端点严格 0→1，避免动画来回抖）、`tween_float`/`tween_vec2`/`tween_color`（同属性旧补间自动杀掉）、
+  平行四边形几何（圆角多边形 + 凸多边形垂直裁剪）、原生控件皮肤
+- `skew_button.gd` / `skew_panel.gd` — 平行四边形按钮（浮起 + 从左填充）与静态底板
+- `backdrop.gd` + `assets/ui/slant_panel.gdshader` — 共享背景：云图 + 斜切操作区；`reveal` 控制大图形滑出，
+  分界线用 `SCREEN_UV` 计算，节点怎么摆放都不影响斜线位置
+- `boot_intro.gd` — 启动动画（时间轴用**音乐播放位置**驱动，保证白光和爆发点对齐）
+- `title_screen.gd` / `menu_panel.gd` / `sim_setup_panel.gd` / `ace_board_panel.gd` / `app_settings_panel.gd`
+
+**换 BGM（重要）**：当前曲子是《Phigros》开屏音乐，**只用于非商业同人演示**，版权归 Pigeon Games。
+要替换：把已获授权的音频放成 `assets/audio/title_loop.ogg` —— 它会同时替换启动动画曲与主界面循环，
+代码无需改动（白光卡点在 `boot_intro.gd` 的 `IMPACT_TIME = 8.0`，换曲后按新曲爆发点调整）。
+提取/裁剪工具：`tools/make_music_from_recording.py`；循环点校验：`tools/check_music.gd`；
+缓动单调性校验：`tools/check_easing.gd`。
+
+**已停用但保留的文件**（只为对照 1.x 行为）：`TitleScrBtnClk.gd`、`SettingsMenu.tscn/.gd`、`SettingsPanel.gd`。
+
+**开发工具**（不进导出包）：`tools/shot.gd` 可在无编辑器的情况下截图巡检任意场景/子界面：
+
+```bash
+godot --path . -s res://tools/shot.gd -- --scene=res://TitleScreen.tscn --out=.local/shots/a.png --wait=2.0 \
+      --open=settings --page=2 --hover=1
+```
+
+> 本机约定：`godoteng/`（引擎）与 `.local/`（Godot 用户数据、截图）都留在工程目录内，已加进 `.gitignore`；
+> 运行 Godot 时把 `APPDATA` / `LOCALAPPDATA` 指向 `.local/appdata`，不会写到系统盘。

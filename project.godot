@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Typhoon"
-config/version="1.2.0"
-run/main_scene="res://TitleScreen.tscn"
+config/version="1.3.0-beta.1"
+run/main_scene="res://BootIntro.tscn"
 ; 用户 2026-11-10（⑤）：限制最大 FPS，防止「暂停 / 回到主菜单」时没有 vsync 的机器上
 ; 引擎全速空转把 GPU 顶到 95%+（正常运行没问题，但空场景帧率可以冲到几百上千）。
 run/max_fps=60
@@ -26,6 +26,7 @@ Game="*res://scripts/Game.gd"
 GameSettings="*res://scripts/GameSettings.gd"
 SimClock="*res://scripts/SimClock.gd"
 MusicManager="*res://scripts/MusicManager.gd"
+SceneTransition="*res://scripts/SceneTransition.gd"
 
 [display]
 
