@@ -1,4 +1,7 @@
 extends Control
+## ⚠ 2.0 起停用：主界面已由 scripts/ui/title_screen.gd 重做（TitleScreen.tscn 不再挂本脚本）。
+##   保留此文件只为对照 1.x 的行为；它引用的 %SettingsPanel / %BoardPopup 节点在新场景里已不存在。
+##
 ## 开始菜单。
 ##
 ## 保留原工程的布局（Sprite2D 背景 + 半透明遮罩 + 锚点定位的按钮），只做了加法：
