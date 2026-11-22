@@ -20,68 +20,101 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.72)
 
-[node name="Box" type="PanelContainer" parent="."]
+[node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -330.0
-offset_top = -250.0
-offset_right = 330.0
-offset_bottom = 250.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
-[node name="Rows" type="VBoxContainer" parent="Box"]
+[node name="Box" type="PanelContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 12
 
-[node name="ResultTitle" type="Label" parent="Box/Rows"]
+[node name="Rows" type="VBoxContainer" parent="Margin/Box"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ResultTitle" type="Label" parent="Margin/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 30
 text = "风季结束"
 horizontal_alignment = 1
 
-[node name="ResultSummary" type="Label" parent="Box/Rows"]
+[node name="Sep0" type="HSeparator" parent="Margin/Box/Rows"]
+layout_mode = 2
+
+[node name="ResultSummary" type="Label" parent="Margin/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 17
 text = "…"
 horizontal_alignment = 1
 
-[node name="Sep" type="HSeparator" parent="Box/Rows"]
-layout_mode = 2
-
-[node name="StormList" type="ItemList" parent="Box/Rows"]
+[node name="TableHeaderHost" type="VBoxContainer" parent="Margin/Box/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 190)
 layout_mode = 2
+theme_override_constants/separation = 0
 
-[node name="SaveLabel" type="Label" parent="Box/Rows"]
+[node name="TableScroll" type="ScrollContainer" parent="Margin/Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="RowsBox" type="VBoxContainer" parent="Margin/Box/Rows/TableScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="SaveLabel" type="Label" parent="Margin/Box/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "…"
 autowrap_mode = 2
 
-[node name="Buttons" type="HBoxContainer" parent="Box/Rows"]
+[node name="ExportHint" type="Label" parent="Margin/Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.65, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+text = ""
+autowrap_mode = 2
+horizontal_alignment = 1
+
+[node name="Sep1" type="HSeparator" parent="Margin/Box/Rows"]
+layout_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Margin/Box/Rows"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 24
 
-[node name="AgainButton" type="Button" parent="Box/Rows/Buttons"]
+[node name="ExportButton" type="Button" parent="Margin/Box/Rows/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 42)
+custom_minimum_size = Vector2(210, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
+tooltip_text = "把地图 + 本局已结束台风的路径导出成 PNG（本局还没有已结束台风时禁用）"
+text = "导出路径图片"
+
+[node name="AgainButton" type="Button" parent="Margin/Box/Rows/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
 text = "再跑一局"
 
-[node name="MenuButton" type="Button" parent="Box/Rows/Buttons"]
+[node name="MenuButton" type="Button" parent="Margin/Box/Rows/Buttons"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 42)
+custom_minimum_size = Vector2(180, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "回主菜单"

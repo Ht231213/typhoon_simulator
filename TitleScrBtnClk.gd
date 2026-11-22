@@ -2,19 +2,23 @@ extends Control
 ## 开始菜单。
 ##
 ## 保留原工程的布局（Sprite2D 背景 + 半透明遮罩 + 锚点定位的按钮），只做了加法：
-## 「模拟单台」改为打开模拟设置界面，「退出」保持退出，新增「ACE 存档」查看排行榜。
+## 「开始模拟」打开模拟设置面板，「退出」保持退出，「ACE 存档」查看排行榜。
 
 @onready var single_button: Button = %ButtonSingleTy
 @onready var board_button: Button = %ButtonBoard
 @onready var settings_button: Button = %ButtonSettings
 @onready var exit_button: Button = %ButtonExit
+## 背景图（2026-11-22 窗口尺寸可变：大窗口要放大铺满，不能露底）
+@onready var background: Sprite2D = get_node_or_null("Background") as Sprite2D
+## 1.2.0 设计稿（1280×720）上的原始 scale：窗口不比设计稿大时保持它，观感和 1.2.0 一致
+const BG_DESIGN_SCALE := 0.78161705
 ## 模拟设置（模式 / 风季），不是应用设置
 @onready var settings_panel: Control = %SettingsPanel
 ## 应用设置（视频 / 音频 / 模拟设置选项卡）。
 ## ⚠ 它**不能**是场景里的静态实例 —— 见 `_ready()` 里的创建代码（BUG-1）。
 var app_settings: Control = null
-@onready var board_popup: AcceptDialog = %BoardPopup
-@onready var board_text: RichTextLabel = %BoardText
+## ACE 存档大窗口（2026-11-22 需求 7）。同样必须运行时实例化（BUG-1）。
+var ace_archive: Control = null
 ## 左下角版本号。文字在 `_ready()` 里从 ProjectSettings 取，不硬编码（改版本号自动跟随）
 @onready var version_label: Label = %VersionLabel
 
@@ -58,10 +62,41 @@ func _ready() -> void:
 	app_settings.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	settings_panel.on_cancel = _on_settings_cancelled
+	settings_panel.settings_requested.connect(_on_cinematic_settings_requested)
 	settings_panel.visible = false
+
+	# ACE 存档大窗口（2026-11-22 需求 7）：与 SettingsMenu 一样运行时实例化 + 显式铺满，
+	# 避免导出包里静态 Control 实例丢锚点的 BUG-1。
+	ace_archive = load("res://AceArchive.tscn").instantiate()
+	ace_archive.name = "AceArchive"
+	add_child(ace_archive)
+	ace_archive.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ace_archive.on_closed = _on_ace_archive_closed
+	ace_archive.visible = false
+
 	app_settings.on_closed = _on_app_settings_closed
 	app_settings.visible = false
 	single_button.grab_focus()
+
+	# 背景图 cover：窗口尺寸下拉换成大窗口后，右侧/下方不能出现空底
+	get_viewport().size_changed.connect(_fit_background)
+	_fit_background()
+
+
+## 背景图按窗口做 cover 缩放：以设计稿的图片中心为锚点，保证四个边都铺满。
+## 窗口 ≤ 设计稿时保持原始 scale → 1280×720/1280×782 下观感与 1.2.0 完全一致。
+func _fit_background() -> void:
+	if background == null or background.texture == null:
+		return
+	var tex := background.texture.get_size()
+	if tex.x <= 0.0 or tex.y <= 0.0:
+		return
+	var win := get_viewport().get_visible_rect().size
+	var c := background.position
+	var need_x := maxf(2.0 * c.x / tex.x, 2.0 * (win.x - c.x) / tex.x)
+	var need_y := maxf(2.0 * c.y / tex.y, 2.0 * (win.y - c.y) / tex.y)
+	var s := maxf(maxf(need_x, need_y), BG_DESIGN_SCALE)
+	background.scale = Vector2(s, s)
 
 
 func _on_single_ty_pressed() -> void:
@@ -72,8 +107,13 @@ func _on_settings_cancelled() -> void:
 	single_button.grab_focus()
 
 
-## 打开应用设置（视频 / 音频）
+## 打开应用设置（视频 / 音频 / 预设 / 模拟 / 导出）
 func _on_app_settings_pressed() -> void:
+	app_settings.open()
+
+
+## 电影模式下点「设置」：打开同一份应用设置（电影模式专属参数以后再做）
+func _on_cinematic_settings_requested() -> void:
 	app_settings.open()
 
 
@@ -85,46 +125,10 @@ func _on_exit_pressed() -> void:
 	get_tree().quit()
 
 
+## 「ACE 存档」：打开大窗口 + 表格（2026-11-22 需求 7，替代原来的 620×460 弹窗）
 func _on_board_pressed() -> void:
-	board_text.text = _build_board_text()
-	board_popup.popup_centered(Vector2i(620, 460))
+	ace_archive.open()
 
 
-## ACE 排行榜：按总 ACE 从高到低排，只显示前 10 条
-func _build_board_text() -> String:
-	var lines := PackedStringArray()
-	lines.append("[b][font_size=20]ACE 排行榜[/font_size][/b]")
-	lines.append("[color=#9aa]存档：%s[/color]" % Game.save_path_absolute())
-	lines.append("")
-
-	var total := 0
-	for category in ["单台-手动", "单台-自动"]:
-		var history: Array = Game.history(category)
-		total += history.size()
-		lines.append("[b][font_size=17]%s[/font_size][/b]  （共 %d 条）" % [category, history.size()])
-		if history.is_empty():
-			lines.append("    [i]暂无记录[/i]")
-		else:
-			# 排序：总 ACE 高的在前
-			var sorted := history.duplicate()
-			sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-				return float(a.get("total_ace", 0.0)) > float(b.get("total_ace", 0.0)))
-			var top: int = mini(10, sorted.size())
-			lines.append("    [color=#889]排名  总ACE     场次   时间[/color]")
-			for i in top:
-				var e: Dictionary = sorted[i]
-				# ⚠ 原来的奖牌 emoji（U+1F947/48/49）不在 Noto Sans SC 的 cmap 里
-				#   （网页版没系统字体 → 方框），改用字体自带的 ★；
-				#   名次数字本来就在后面打印，信息没少。
-				var medal := "★ " if i < 3 else ""
-				lines.append("    %s%-4d %8.2f  %3d 场  %s" % [
-					medal, i + 1,
-					float(e.get("total_ace", 0.0)),
-					int(e.get("storm_count", 0)),
-					Time.get_datetime_string_from_unix_time(int(e.get("saved_at", 0))),
-				])
-		lines.append("")
-
-	if total == 0:
-		lines.append("[i]还没有任何成绩。跑一局「风季模式」，结束后会自动写入排行榜。[/i]")
-	return "\n".join(lines)
+func _on_ace_archive_closed() -> void:
+	board_button.grab_focus()

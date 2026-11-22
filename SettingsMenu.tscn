@@ -64,14 +64,30 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
-[node name="FullscreenCheck" type="CheckBox" parent="Margin/Box/Rows/Pages/视频"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 56)
+[node name="WindowSizeRow" type="HBoxContainer" parent="Margin/Box/Rows/Pages/视频"]
 layout_mode = 2
-theme_override_constants/icon_max_width = 48
-theme_override_font_sizes/font_size = 22
-tooltip_text = "切换全屏 / 窗口模式"
-text = "全屏显示"
+theme_override_constants/separation = 14
+
+[node name="WindowSizeLabel" type="Label" parent="Margin/Box/Rows/Pages/视频/WindowSizeRow"]
+custom_minimum_size = Vector2(130, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+text = "窗口大小"
+
+[node name="WindowSizeOption" type="OptionButton" parent="Margin/Box/Rows/Pages/视频/WindowSizeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+
+[node name="WindowSizeHint" type="Label" parent="Margin/Box/Rows/Pages/视频"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.65, 0.7, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+autowrap_mode = 2
 
 [node name="音频" type="VBoxContainer" parent="Margin/Box/Rows/Pages"]
 layout_mode = 2

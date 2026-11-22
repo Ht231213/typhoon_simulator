@@ -48,6 +48,10 @@ var EXPORT_FILL_USA_AGENCY := false
 ## 最佳路径导出目录（`[export] best_track_dir`）。**空 = 游戏根目录下的 BestTrack/**。
 ## 用户 2026-10-30：游戏内 UI 不提供路径选择，但配置文件可以调。
 var EXPORT_BEST_TRACK_DIR := ""
+## 调试作弊面板（F6）是否允许打开。默认 false；开发期想让 F6 可用，
+## 在 exe 同目录放一个 simulation.cfg 覆盖（[debug] allow_debug_cheats=true）。
+## ⚠ 只限制「作弊」面板；其它显示类调试（G / R / F3 / F4 / F5 / F2 海温）不受影响。
+var ALLOW_DEBUG_CHEATS := false
 
 
 func _ready() -> void:
@@ -191,6 +195,11 @@ func _load_sim_config() -> void:
 	# 年份至少从 1 起（0000 年不是合法 ISO 年份）
 	EXPORT_INITIAL_YEAR = maxi(1, EXPORT_INITIAL_YEAR)
 	EXPORT_MAX_WIND_KT = maxf(1.0, EXPORT_MAX_WIND_KT)
+	# 调试作弊面板开关（F6）：默认关；exe 同目录 simulation.cfg 可覆盖
+	ALLOW_DEBUG_CHEATS = _cfg_bool_in(base, base_ok, over, over_ok,
+		"debug", "allow_debug_cheats", ALLOW_DEBUG_CHEATS)
+	if ALLOW_DEBUG_CHEATS:
+		print("[Const] 调试作弊面板（F6）已允许（[debug] allow_debug_cheats=true）")
 
 	# 夹到合理范围，避免配置文件写错把游戏搞崩
 	physics_ticks_per_second = clampi(physics_ticks_per_second, 1, 1000)
@@ -813,6 +822,15 @@ const WARM_RECOVERY_STEP := 0.05
 
 ## 风季模式的时长
 const SEASON_MONTHS := 12
+
+## ⑤A-1 多台风：同屏最多同时存在的台风数（用户 2026-11-22 定 6）
+const MAX_ACTIVE_STORMS := 6
+## ⑤A-1：**自动模式（非风季）**两场投放之间的间隔（模拟天）。
+## 不能沿用风季的 5~15 天：自动模式台风寿命约 7~9 天，5~15 天间隔几乎不会并存；
+## 2~6 天 → 同屏常见 2~3 场（风季仍用 DEPLOY_COOLDOWN_MIN/MAX 保持原来的节奏）。
+const AUTO_DEPLOY_GAP_MIN := 2.0
+const AUTO_DEPLOY_GAP_MAX := 6.0
+
 
 ## 上一场台风结束后，需要等待多少模拟日才允许投放下一场（随机区间）
 const DEPLOY_COOLDOWN_MIN := 5.0

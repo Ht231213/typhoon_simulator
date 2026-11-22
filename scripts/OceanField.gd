@@ -712,7 +712,7 @@ func set_pressure_at(index: int, value: float) -> void:
 # ------------------------- 绘制 -------------------------
 
 func _draw() -> void:
-	# ① 调试用的掩膜可视化。独立于海温层——按 T 关掉海温后照样能看。
+	# ① 调试用的掩膜可视化。独立于海温层——按 F2 关掉海温后照样能看。
 	if mask_view_mode > 0:
 		var ov := _mask_view_texture(mask_view_mode)
 		if ov != null:
@@ -729,7 +729,7 @@ func _draw() -> void:
 				draw_rect(lr, Color(1.0, 0.55, 0.1, 0.14))
 				draw_rect(lr, Color(1.0, 0.7, 0.2, 0.85), false, 1.5)
 
-	# T 键关闭时整层不画，只留 WPAC.png 底图
+	# F2 键关闭时整层不画，只留 WPAC.png 底图
 	if not show_field:
 		return
 
@@ -743,7 +743,7 @@ func _draw() -> void:
 			draw_rect(rect, Color(0.10, 0.28, 0.85, 0.05 + 0.5 * (1.0 - t)))
 		else:
 			# 海温场同样覆盖**全部 192 格，包括陆地格**（用户 2026-10-17 要求
-			# 「按 T 显示所有格的温度」）。
+			# 「按 F2 显示所有格的温度」）。
 			#
 			# ⚠ 以前陆地格画的是暗色块、好让地图的陆地纹理透出来 —— 但那样
 			#   看不见陆地格的海温值，而仿真**是**拿陆地格的海温算强度的

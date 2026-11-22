@@ -29,6 +29,12 @@ const DAYS_PER_YEAR := DAYS_PER_MONTH * MONTHS_PER_YEAR      # 360
 var month := Const.START_MONTH
 var day := Const.START_DAY
 var running := false
+## 第几年（1 起步）。非风季模式跨年时 +1，reset() 回 1。
+## 侧栏「模拟状态」的「本年完成 N 场」用它区分年度（2026-11-22 新增）。
+var year := 1
+## 本局已运行的总模拟日（从开局累计，跨年不清零；暂停时间轴时不涨）。
+## 侧栏「运行时长」用它；reset() 回 0。
+var total_days := 0
 
 ## true = 空闲加速（1 秒/天）；false = 正常（4 秒/天）。
 ## 由 TyphoonSim 根据「有没有活跃台风」设置。
@@ -85,8 +91,9 @@ func _advance_day() -> void:
 			# 已经是 12月30日，再走一天就是新的一年
 			year_completed.emit()
 			if clamp_at_year_end:
-				return                       # 停在 12月30日，等结算
+				return                       # 停在 12月30日，等结算（不涨天数）
 			month = 1
+			year += 1
 			month_changed.emit(month)
 		else:
 			month += 1
@@ -94,6 +101,7 @@ func _advance_day() -> void:
 		day = 1
 	else:
 		day += 1
+	total_days += 1
 	day_advanced.emit()
 
 
@@ -117,6 +125,8 @@ func resume() -> void:
 func reset() -> void:
 	month = Const.START_MONTH
 	day = Const.START_DAY
+	year = 1
+	total_days = 0
 	_day_accumulator = 0.0
 	idle_boost = false
 

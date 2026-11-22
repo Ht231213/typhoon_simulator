@@ -17,7 +17,7 @@ extends CanvasLayer
 var sim: Node = null
 var field: OceanField = null
 
-## 上一个台风的引用。台风结束后 `sim.active_storm` 会变成 null，
+## 上一个台风的引用。台风结束后 `sim.focus_storm()` 会变成 null，
 ## 但用户还想看它的最后状态，所以这里持一份引用（Storm 是 RefCounted，持有就不会被回收）。
 var _last_storm: Storm = null
 ## 它最后所在的格号
@@ -70,6 +70,15 @@ func _ready() -> void:
 	_build_ui()
 	visible = false
 	set_process(true)
+
+
+## ESC 关闭（2026-11-22）：之前没处理，ESC 会被 PauseLayer 接走变成「打开暂停菜单」。
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
+		close()
+		get_viewport().set_input_as_handled()
 
 
 func _build_ui() -> void:
@@ -220,7 +229,8 @@ func _process(_d: float) -> void:
 func _cur_storm() -> Storm:
 	if sim == null:
 		return null
-	var s: Storm = sim.active_storm
+	# ⑤A-1 多台风：F6 面板跟"选中的那场"（侧栏下拉可切换）
+	var s: Storm = sim.focus_storm()
 	if s != null:
 		_last_storm = s          # 记住，台风结束后还要给用户看
 		_storm_ended = false
@@ -234,7 +244,7 @@ func _cur_cell() -> int:
 	if s == null:
 		return 0
 	var c := Const.cell_index_from_world(s.current_world_position())
-	if sim != null and sim.active_storm != null:
+	if sim != null and sim.focus_storm() != null:
 		_last_cell = c
 		_storm_ended = false
 		return c
@@ -382,7 +392,7 @@ func _nudge(key: String, delta: float) -> void:
 
 func _refresh() -> void:
 	var s := _cur_storm()
-	var alive: bool = sim != null and sim.active_storm != null
+	var alive: bool = sim != null and sim.focus_storm() != null
 	for r in _rows:
 		var key: String = r["key"]
 		var vl: Label = r["value"]
@@ -422,8 +432,7 @@ func _op_reset_cell_sst() -> void:
 func _op_deploy() -> void:
 	if sim == null:
 		return
-	if sim.active_storm != null:
-		sim.discard_storm_for_test()
+	# ⑤A-1 多台风：不再"先丢弃现有台风"，直接在场上再加一场（上限 6 由 try_deploy 拦）
 	# 一条从暖池出发的短测试路径
 	var lls := [Vector2(148.0, 16.0), Vector2(144.0, 18.0), Vector2(140.0, 20.0),
 		Vector2(136.0, 22.0), Vector2(132.0, 24.0), Vector2(128.0, 26.0),
@@ -457,8 +466,10 @@ func _op_revive() -> void:
 
 
 func _op_finish() -> void:
-	if sim != null and sim.active_storm != null:
-		sim._finish_storm()
+	if sim != null:
+		var s: Storm = sim.focus_storm()
+		if s != null:
+			sim._finish_storm(s)
 	_refresh()
 
 

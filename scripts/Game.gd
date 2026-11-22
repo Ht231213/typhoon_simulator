@@ -12,6 +12,18 @@ enum Mode { MANUAL, AUTO, CINEMATIC }
 var mode: Mode = Mode.MANUAL
 ## 风季模式：true = 只模拟 12 个月；false = 无限模拟
 var season_mode := false
+## 多台模式（2026-11-22 新增，标题画面「游戏模式」下拉选）：
+##   false = 单台模式：同屏最多 1 场活跃台风（1.2.0 之前的行为）
+##   true  = 多台模式：同屏最多 Const.MAX_ACTIVE_STORMS 场（⑤A-1 的行为）
+## 和 mode / season_mode 一样是「一局」的属性，begin_session() 不清它。
+var multi_mode := false
+
+
+## 当前模式允许的同屏活跃台风上限：单台 1 / 多台 6。
+## ⚠ 所有上限判断都走这个函数，不要再直接读 Const.MAX_ACTIVE_STORMS。
+func max_active_storms() -> int:
+	return Const.MAX_ACTIVE_STORMS if multi_mode else 1
+
 
 ## 兼容旧调用：手动/自动
 var auto_mode: bool:
@@ -27,12 +39,22 @@ func mode_name() -> String:
 
 
 func mode_label() -> String:
-	return "%s + %s" % [mode_name(), "风季" if season_mode else "非风季"]
+	if mode == Mode.CINEMATIC:
+		return "电影模式 + %s" % ("风季" if season_mode else "非风季")
+	return "%s + %s + %s" % [
+		"多台" if multi_mode else "单台",
+		"自动" if mode == Mode.AUTO else "手动",
+		"风季" if season_mode else "非风季",
+	]
 
 
-## 存档分类。手动系模式归入「单台-手动」，自动归入「单台-自动」。
+## 存档分类：单台/多台 × 手动/自动（2026-11-22 加多台）。
+## ⚠ 旧存档只有「单台-手动 / 单台-自动」两类，读了照样能用（按 key 取值，不枚举）。
 func save_category() -> String:
-	return "单台-自动" if mode == Mode.AUTO else "单台-手动"
+	return "%s-%s" % [
+		"多台" if multi_mode else "单台",
+		"自动" if mode == Mode.AUTO else "手动",
+	]
 
 
 # ============================ 一局的数据 ============================

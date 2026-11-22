@@ -75,6 +75,14 @@ theme_override_font_sizes/font_size = 22
 tooltip_text = "打开设置（视频 / 音频）"
 text = "设置"
 
+[node name="ExportButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "把地图 + 本局已结束台风的路径合并导出成 PNG（没有已结束的台风时禁用）"
+text = "导出图片"
+
 [node name="MenuButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
@@ -93,25 +101,53 @@ theme_override_constants/separation = 8
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 17
-text = "本次台风列表（0 场）    总 ACE 0.00"
+text = "本局 · 总 ACE 0.00"
 
-[node name="ListPanel" type="PanelContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+[node name="RunTitle" type="Label" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
 layout_mode = 2
-size_flags_vertical = 3
+theme_override_font_sizes/font_size = 15
+text = "进行中（0 场）"
 
-[node name="Scroll" type="ScrollContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn/ListPanel"]
+[node name="RunHeaderHost" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
 layout_mode = 2
+theme_override_constants/separation = 0
 
-[node name="StormList" type="RichTextLabel" parent="Root/Margin/Box/Rows/Columns/RightColumn/ListPanel/Scroll"]
+[node name="RunScroll" type="ScrollContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 130)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="RunRows" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn/RunScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="DoneTitle" type="Label" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "已完成（0 场）"
+
+[node name="DoneHeaderHost" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="DoneScroll" type="ScrollContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn"]
+unique_name_in_owner = true
+layout_mode = 2
 size_flags_vertical = 3
-theme_override_font_sizes/normal_font_size = 16
-bbcode_enabled = true
-autowrap_mode = 2
-fit_content = true
-scroll_active = false
+horizontal_scroll_mode = 0
+
+[node name="DoneRows" type="VBoxContainer" parent="Root/Margin/Box/Rows/Columns/RightColumn/DoneScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
 
 [node name="Sep2" type="HSeparator" parent="Root/Margin/Box/Rows"]
 layout_mode = 2

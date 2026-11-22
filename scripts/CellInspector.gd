@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 海区探针：跟随鼠标显示所指海区的全部调试信息。由 T 键（海温查看模式）一并开关。
+## 海区探针：跟随鼠标显示所指海区的全部调试信息。由 F2 键（海温查看模式）一并开关。
 ##
 ## 显示内容（用户要求）：
 ##   · 行列号 + 海区编号
@@ -204,5 +204,6 @@ func _describe(world: Vector2, idx: int) -> String:
 func _active_wind() -> float:
 	if sim == null:
 		return 0.0
-	var s = sim.active_storm
+	# ⑤A-1 多台风：用"选中的那场"（focus_storm）
+	var s = sim.focus_storm()
 	return s.wind_kt if s != null else 0.0
