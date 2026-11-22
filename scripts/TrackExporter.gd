@@ -9,12 +9,13 @@ extends RefCounted
 ## ⚠ 关键坑（2026-11-22 实测）：离屏 PathLayer 只能**直接填 points/intensities/phases**，
 ##   绝对不能调 set_live_position() —— 那会生成台风图标/风圈，把导出图弄脏。
 ##
-## 只在内存里生成；桌面写到 <游戏根>/导出图片/，web 走浏览器下载。
-## 不写存档、不做图片库（用户 2026-11-22 定）。
+## 只出桌面版：web 版从 Beta.3 起已停止提供（用户 2026-11-22 确认），
+## 所以没有浏览器下载分支，统一写到 <游戏根>/导出图片/。
+## 不写存档、不做图片库。
 
 const MAP_TEXTURE_PATH := "res://assets/images/WPAC.png"
-## 导出分辨率：2× 世界尺寸（1080×864）。实测取图 94~317 ms、PNG 约 3 MB。
-const EXPORT_SIZE := Vector2i(2160, 1728)
+## 导出分辨率 = WPAC.png **原生 1:1 像素**（最清晰；实测约 1.07 s、PNG 约 5.75 MB）
+const EXPORT_SIZE := Vector2i(3000, 2400)
 ## 导出目录名（游戏根目录下，和 BestTrack/ 同级）
 const OUT_DIR_NAME := "导出图片"
 ## 文件名前缀（后面接系统时间）
@@ -23,7 +24,7 @@ const FILE_PREFIX := "TyphoonTrack_"
 const WAIT_FRAMES := 2
 
 
-## 导出。成功返回一句提示（桌面带文件路径 / web 说明已下载），失败返回空字符串。
+## 导出。成功返回一句提示（带文件路径），失败返回空字符串。
 ## host：任意已在场景树里的节点（SubViewport 挂到它下面，用完释放）。
 ## path_layer：主场景的路径层——只读它的存档数据，不会被改动。
 func export_png(host: Node, path_layer: PathLayer) -> String:
@@ -41,7 +42,7 @@ func export_png(host: Node, path_layer: PathLayer) -> String:
 	vp.size = EXPORT_SIZE
 	vp.transparent_bg = false
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	# 2D MSAA 让折线边缘平滑；GL Compatibility（web）上可能被忽略，不影响出图
+	# 2D MSAA 让折线边缘平滑
 	vp.msaa_2d = Viewport.MSAA_4X
 	host.add_child(vp)
 
@@ -75,12 +76,7 @@ func export_png(host: Node, path_layer: PathLayer) -> String:
 	var stamp := _timestamp()
 	var file_name := "%s%s.png" % [FILE_PREFIX, stamp]
 
-	# ③ web：浏览器下载（没有可写的游戏目录）
-	if OS.has_feature("web"):
-		JavaScriptBridge.download_buffer(img.save_png_to_buffer(), file_name, "image/png")
-		return "已导出图片（浏览器下载）：%s" % file_name
-
-	# ④ 桌面：写到 <游戏根>/导出图片/
+	# ③ 桌面：写到 <游戏根>/导出图片/
 	var dir := _game_root().path_join(OUT_DIR_NAME)
 	var err_dir := DirAccess.make_dir_recursive_absolute(dir)
 	if err_dir != OK:
