@@ -18,13 +18,20 @@ const GRID_OVERLAY_PATH := "MapLayer/GridOverlay"
 @onready var sim: TyphoonSim = %TyphoonSim
 @onready var sidebar: PanelContainer = %Sidebar
 @onready var results_panel: Control = %ResultsPanel
+@onready var zoom_out_button: Button = %ZoomOutButton
+@onready var zoom_in_button: Button = %ZoomInButton
 
 ## 调试面板（F6）。运行到 _ready 时才会被实例化出来。
 var debug_panel: Node = null
 ## 海区探针：跟随鼠标显示所指海区的信息。由 T 键（海温查看模式）一并开关。
 var cell_probe: Node = null
 
-var _scale := 1.0
+## 地图缩放档位（2026-11-22 用户要求）：1x = 适应窗口看全图；≥2x 跟随选中台风
+const ZOOM_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0]
+## 当前缩放档位下标（默认 0 = 1x，不写盘）
+var _zoom_index := 0
+## 「适应窗口」时地图的 scale（窗口尺寸变了要重算）
+var _fit_scale := 1.0
 
 
 func _ready() -> void:
@@ -72,6 +79,11 @@ func _ready() -> void:
 
 	sidebar.visible = true
 	results_panel.visible = false
+
+	# 地图缩放 / 跟随（2026-11-22）：侧栏底部 − / ＋ 两个按钮
+	zoom_out_button.pressed.connect(_on_zoom_step.bind(-1))
+	zoom_in_button.pressed.connect(_on_zoom_step.bind(1))
+	set_process(true)                 # ≥2x 时每帧把镜头对准选中的台风
 
 	map_area.resized.connect(_relayout)
 	get_viewport().size_changed.connect(_relayout)
@@ -155,14 +167,76 @@ func _can_auto_place() -> bool:
 	return sim.can_deploy_now()
 
 
-## 地图等比缩放并在地图区域内居中
+# ============================ 地图缩放 / 跟随（2026-11-22） ============================
+# 手写镜头：沿用 map_layer.scale / position（不引入 Camera2D，UI 不受影响）。
+#   1x        = 适应窗口看全图（原有行为）
+#   2x ~ 8x   = 只放大地图，并把「侧栏选中的那场台风」放到 MapArea 中心；
+#               没有活跃台风时保持地图中心。
+# 跟随到地图边缘时把 position 夹紧，保证地图边不会缩进 MapArea（不露深色底）。
+
+## 窗口/地图区尺寸变了：重算「适应窗口」scale，再按当前档位套用
 func _relayout() -> void:
 	var avail := map_area.size
 	if avail.x <= 1.0 or avail.y <= 1.0:
 		return
-	_scale = minf(avail.x / Const.MAP_W, avail.y / Const.MAP_H)
-	map_layer.scale = Vector2(_scale, _scale)
-	map_layer.position = (avail - Vector2(Const.MAP_W, Const.MAP_H) * _scale) * 0.5
+	_fit_scale = minf(avail.x / Const.MAP_W, avail.y / Const.MAP_H)
+	_apply_view()
+
+
+## 按当前缩放档位计算 map_layer 的 scale / position
+func _apply_view() -> void:
+	var avail := map_area.size
+	if avail.x <= 1.0 or avail.y <= 1.0:
+		return
+	var zoom: float = ZOOM_LEVELS[_zoom_index]
+	var s := _fit_scale * zoom
+	var map_size := Vector2(Const.MAP_W, Const.MAP_H) * s
+	var pos := (avail - map_size) * 0.5          # 默认：地图居中
+	if zoom > 1.0001:
+		var focus := sim.focus_storm()
+		if focus != null:
+			# 把选中台风的中心放到 MapArea 中心；再去夹紧，保证不露出地图外
+			pos = avail * 0.5 - focus.current_world_position() * s
+		pos = _clamp_view(pos, map_size, avail)
+	map_layer.scale = Vector2(s, s)
+	map_layer.position = pos
+	_refresh_zoom_buttons()
+
+
+## 放大时夹紧镜头：地图比可视区大的轴，保证地图边缘不进入 MapArea
+func _clamp_view(pos: Vector2, map_size: Vector2, avail: Vector2) -> Vector2:
+	if map_size.x >= avail.x:
+		pos.x = clampf(pos.x, avail.x - map_size.x, 0.0)
+	else:
+		pos.x = (avail.x - map_size.x) * 0.5
+	if map_size.y >= avail.y:
+		pos.y = clampf(pos.y, avail.y - map_size.y, 0.0)
+	else:
+		pos.y = (avail.y - map_size.y) * 0.5
+	return pos
+
+
+func _on_zoom_step(dir: int) -> void:
+	_zoom_index = clampi(_zoom_index + dir, 0, ZOOM_LEVELS.size() - 1)
+	_apply_view()
+	var zoom: float = ZOOM_LEVELS[_zoom_index]
+	if zoom <= 1.0:
+		sidebar._on_notice("地图缩放：1x（适应窗口看全图）")
+	else:
+		var focus := sim.focus_storm()
+		sidebar._on_notice("地图缩放：%dx（跟随 %s）" % [
+			int(zoom), focus.number_text() if focus != null else "地图中心"])
+
+
+func _refresh_zoom_buttons() -> void:
+	zoom_out_button.disabled = _zoom_index <= 0
+	zoom_in_button.disabled = _zoom_index >= ZOOM_LEVELS.size() - 1
+
+
+## 放大状态下每帧更新跟随目标（选中台风会移动 / 也会被切换）
+func _process(_delta: float) -> void:
+	if _zoom_index > 0:
+		_apply_view()
 
 
 # ============================ 风季结束 ============================

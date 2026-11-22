@@ -80,6 +80,15 @@ theme_override_font_sizes/font_size = 13
 text = "…"
 autowrap_mode = 2
 
+[node name="ExportHint" type="Label" parent="Margin/Box/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.65, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+text = ""
+autowrap_mode = 2
+horizontal_alignment = 1
+
 [node name="Sep1" type="HSeparator" parent="Margin/Box/Rows"]
 layout_mode = 2
 
@@ -87,6 +96,14 @@ layout_mode = 2
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 24
+
+[node name="ExportButton" type="Button" parent="Margin/Box/Rows/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(210, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "把地图 + 本局已结束台风的路径导出成 PNG（本局还没有已结束台风时禁用）"
+text = "导出路径图片"
 
 [node name="AgainButton" type="Button" parent="Margin/Box/Rows/Buttons"]
 unique_name_in_owner = true

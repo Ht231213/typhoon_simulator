@@ -47,6 +47,7 @@ theme_override_constants/separation = 0
 
 [node name="MapArea" type="PanelContainer" parent="View/TopRow" unique_id=1178985602]
 unique_name_in_owner = true
+clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -162,6 +163,27 @@ text = "…"
 [node name="BottomSpacer" type="VBoxContainer" parent="View/TopRow/Sidebar/SideRows"]
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="ZoomRow" type="HBoxContainer" parent="View/TopRow/Sidebar/SideRows"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="ZoomOutButton" type="Button" parent="View/TopRow/Sidebar/SideRows/ZoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+tooltip_text = "缩小地图（1x = 适应窗口看全图）"
+text = "−"
+
+[node name="ZoomInButton" type="Button" parent="View/TopRow/Sidebar/SideRows/ZoomRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+tooltip_text = "放大地图（2x / 4x / 8x，跟随选中的台风）"
+text = "＋"
 
 [node name="DateDialog" type="AcceptDialog" parent="View/TopRow/Sidebar" unique_id=1547992240]
 unique_name_in_owner = true

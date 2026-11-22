@@ -39,6 +39,12 @@ var season_over := false
 ## 本年度「正常结束」的台风场数（侧栏「本年完成 N 场」用）。
 ## 跨年时清零；点「停止模拟」的不算。2026-11-22 新增。
 var _year_finished := 0
+
+## 自动模式「完全出图」判定：台风中心越过地图边界这么多世界像素才算结束
+##（图标世界半径约 50 px，再留余量；用户要求图标整个移出地图，2026-11-22）
+const AUTO_EXIT_MARGIN := 70.0
+## 自动模式路径最多铺到地图外这么远（要保证中心能越过 AUTO_EXIT_MARGIN 才结束）
+const AUTO_PATH_OVERSHOOT := 180.0
 ## 风速显示单位：0=kt 1=m/s 2=km/h。
 ## 实际存在 GameSettings 里（可以在「模拟设置」里改，并且会写盘持久化），
 ## 这里用属性转发，保证游戏内快捷键和设置界面改的是同一份值。
@@ -156,7 +162,11 @@ func _step_storm(storm: Storm, sim_delta: float, finished: Array[Storm]) -> void
 	#      导致台风在 50~55°N（离北界 70°N 还差 15~20°）就被当 tick 杀掉，
 	#      ET/ST/EC 只活 0.1~0.8 天（prober 250 年统计被系统性截断）。
 	#      现在前瞻越界只表示"没法再往前铺路"，真正出图要等本体位置越界或走到最后有效点。
-	if auto_mode and (pos.x < 0.0 or pos.x > Const.MAP_W or pos.y < 0.0 or pos.y > Const.MAP_H):
+	# ⚠ 出图判定：**中心越过边界 AUTO_EXIT_MARGIN 才算完全出图**（2026-11-22 用户要求：
+	#   图标要整个移出地图，而不是卡在图内）。原来用 0..MAP 的「中心一越界就结束」，
+	#   配合自动路径在边界内截断 → 台风停在与边界差一点点的地方。
+	if auto_mode and (pos.x < -AUTO_EXIT_MARGIN or pos.x > Const.MAP_W + AUTO_EXIT_MARGIN \
+			or pos.y < -AUTO_EXIT_MARGIN or pos.y > Const.MAP_H + AUTO_EXIT_MARGIN):
 		storm.out_of_map = true
 
 	# ③ 登陆判定（用户 2026-11-06：**变性中/变性后不算登陆** —— 温带气旋没有"登陆"概念）
@@ -599,6 +609,19 @@ func on_deploy_cooldown() -> bool:
 	return days_until_deploy() > 0.0
 
 
+## 设置「下一次可投放日」（2026-11-22 用户要求：起算点分单台/多台）
+##   · 多台模式：**投放时**立即起算（同时多场，等结束再算会乱节奏）
+##   · 单台模式：**台风结束时**才起算（1.2.0 的老行为）
+## 天数不变：风季 5~15 天；非风季自动 2~6 天；其余模式不设冷却。
+func _schedule_deploy_cooldown() -> void:
+	if season_mode:
+		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
+			Const.DEPLOY_COOLDOWN_MIN, Const.DEPLOY_COOLDOWN_MAX)
+	elif auto_mode:
+		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
+			Const.AUTO_DEPLOY_GAP_MIN, Const.AUTO_DEPLOY_GAP_MAX)
+
+
 ## 是否允许投放：同屏未达上限（单台 1 / 多台 6）、风季未结束、且不在冷却期。
 ## ⑤A-1：不再要求"没有活跃台风"；上限统一走 Game.max_active_storms()（2026-11-22）。
 func can_deploy_now() -> bool:
@@ -654,6 +677,8 @@ func auto_mode_or_extended() -> bool:
 
 
 ## ③ 自动模式：路径点快用完时向前续生成（用户 2026-11-07）
+## ⚠ 2026-11-22 修正：路径要**铺到地图外**（AUTO_PATH_OVERSHOOT），不能再在边界内截断，
+##   否则台风会停在离地图边还差一点的位置（用户报「图标卡在地图内」）。
 func _extend_auto_track(storm: Storm) -> void:
 	if not auto_mode or storm == null:
 		return
@@ -674,18 +699,17 @@ func _extend_auto_track(storm: Storm) -> void:
 	dir = dir.lerp(Vector2(0.55, -0.83).normalized(), turn).normalized()
 	var step := maxf(last.distance_to(prev), 1.0)
 	var p := last
-	var blocked := false
-	for i in 6:
+	# 允许铺到「地图边界外 AUTO_PATH_OVERSHOOT」：台风中心越过 AUTO_EXIT_MARGIN 才算结束，
+	# 所以路径必须铺得比这个边界更远，台风才走得出去
+	for i in 12:
 		p += dir * step
-		if p.x < 0.0 or p.x > Const.MAP_W or p.y < 0.0 or p.y > Const.MAP_H:
-			# ⚠ 只是"无法继续往前铺路"——**不能**在这里判台风出图（BUG 修复，2026-11-22）
-			blocked = true
+		if p.x < -AUTO_PATH_OVERSHOOT or p.x > Const.MAP_W + AUTO_PATH_OVERSHOOT \
+				or p.y < -AUTO_PATH_OVERSHOOT or p.y > Const.MAP_H + AUTO_PATH_OVERSHOOT:
 			break
 		w.append(p)
 	storm.waypoints = w
-	# 路径已铺到地图边界：等台风本体真的走到最后这个有效点，才判「移出地图」结束。
-	# （track_done() 要到末点才为 true，所以期间会每 tick 重试，代价可忽略）
-	if blocked and storm.track_done():
+	# 兜底：路径真的走完（极端情况）且已经越界，按出图处理
+	if storm.track_done() and (p.x < 0.0 or p.x > Const.MAP_W or p.y < 0.0 or p.y > Const.MAP_H):
 		storm.out_of_map = true
 
 ## 自动模式：直接投放下一个（内部仍走 try_deploy 的冷却/上限检查）
@@ -780,14 +804,10 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	view.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int,
 		storm.sst_here, storm.latitude, storm.subtype_st)
 	_sfx_of(storm)          # 初始化本场的音效跟踪状态
-	# 部署冷却：从**投放时**起算（多台模式下允许多场并存，但部署节奏仍受限制）
-	if season_mode:
-		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
-			Const.DEPLOY_COOLDOWN_MIN, Const.DEPLOY_COOLDOWN_MAX)
-	elif auto_mode:
-		# 非风季自动模式：间隔短一些（2~6 天），否则 5~15 天的冷却基本不会出现多台并存
-		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
-			Const.AUTO_DEPLOY_GAP_MIN, Const.AUTO_DEPLOY_GAP_MAX)
+	# 部署冷却（2026-11-22）：**多台模式从投放时立即起算**；单台模式不在这里设，
+	# 等台风结束（_finish_storm / cancel_storm）再设。
+	if Game.multi_mode:
+		_schedule_deploy_cooldown()
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
@@ -1019,6 +1039,9 @@ func _finish_storm(storm: Storm) -> void:
 		selected_storm = storms[0] if not storms.is_empty() else null
 	if storms.is_empty():
 		_stop_background_sfx()
+	# 单台模式：**台风结束才开始冷却**（1.2.0 行为）；多台模式在投放时已起算
+	if not Game.multi_mode:
+		_schedule_deploy_cooldown()
 	storm_finished.emit(rec)
 	state_changed.emit()
 
@@ -1242,6 +1265,9 @@ func cancel_storm(storm: Storm = null) -> void:
 		selected_storm = storms[0] if not storms.is_empty() else null
 	if storms.is_empty():
 		_stop_background_sfx()
+	# 单台模式：台风结束（含点「停止模拟」移除）才开始冷却；多台模式投放时已起算
+	if not Game.multi_mode:
+		_schedule_deploy_cooldown()
 	notice.emit("已停止 %s（不计入编号 / 名称 / ACE）" % storm.number_text())
 	state_changed.emit()
 

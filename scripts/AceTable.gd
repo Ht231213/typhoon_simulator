@@ -13,18 +13,30 @@ extends RefCounted
 ## 行结构：PanelContainer(底色) → HBoxContainer → Label × 9
 ## 表头和数据行都由本类创建，样式/字号保持一致。
 
-## 列定义（唯一真源：表头和数据行都读它）
+## 列定义：ACE 存档页用 8 列（有标签页区分模式，不再需要「模式」列）
 ## align：0=左 1=中 2=右（HORIZONTAL_ALIGNMENT_*）
-const COLUMNS: Array[Dictionary] = [
-	{"key": "number", "title": "编号", "width": 96, "align": 0},
-	{"key": "name", "title": "名称", "width": 150, "align": 0},
-	{"key": "cat", "title": "巅峰等级", "width": 90, "align": 1},
-	{"key": "peak", "title": "巅峰风速", "width": 110, "align": 2},
-	{"key": "pressure", "title": "最低气压", "width": 110, "align": 2},
-	{"key": "ace", "title": "ACE", "width": 100, "align": 2},
-	{"key": "duration", "title": "持续时间", "width": 110, "align": 2},
-	{"key": "mode", "title": "模式", "width": 160, "align": 0},
-	{"key": "end", "title": "结束日期", "width": 120, "align": 0},
+const COLUMNS_ARCHIVE: Array[Dictionary] = [
+	{"key": "number", "title": "编号", "width": 110, "align": 0},
+	{"key": "name", "title": "名称", "width": 200, "align": 0},
+	{"key": "cat", "title": "巅峰等级", "width": 110, "align": 1},
+	{"key": "peak", "title": "巅峰风速", "width": 130, "align": 2},
+	{"key": "pressure", "title": "最低气压", "width": 130, "align": 2},
+	{"key": "ace", "title": "ACE", "width": 120, "align": 2},
+	{"key": "duration", "title": "持续时间", "width": 140, "align": 2},
+	{"key": "end", "title": "结束日期", "width": 140, "align": 0},
+]
+
+## ResultsPanel（本局，不分标签页）保留「模式」列 → 9 列（总宽压到 1204 px 以内）
+const COLUMNS_RESULTS: Array[Dictionary] = [
+	{"key": "number", "title": "编号", "width": 100, "align": 0},
+	{"key": "name", "title": "名称", "width": 180, "align": 0},
+	{"key": "cat", "title": "巅峰等级", "width": 100, "align": 1},
+	{"key": "peak", "title": "巅峰风速", "width": 120, "align": 2},
+	{"key": "pressure", "title": "最低气压", "width": 120, "align": 2},
+	{"key": "ace", "title": "ACE", "width": 110, "align": 2},
+	{"key": "duration", "title": "持续时间", "width": 130, "align": 2},
+	{"key": "mode", "title": "模式", "width": 150, "align": 0},
+	{"key": "end", "title": "结束日期", "width": 130, "align": 0},
 ]
 
 const ROW_HEIGHT := 28
@@ -39,11 +51,11 @@ const ROW_ALT_BG := Color(1.0, 1.0, 1.0, 0.035)
 
 
 ## 在 parent 下建表头。返回表头 PanelContainer（测试里用来看列 x 坐标）。
-static func build_header(parent: Node) -> PanelContainer:
+static func build_header(parent: Node, columns: Array = COLUMNS_ARCHIVE) -> PanelContainer:
 	var pair := _new_row(HEADER_BG, true)
 	var panel: PanelContainer = pair[0]
 	var row: HBoxContainer = pair[1]
-	for col in COLUMNS:
+	for col in columns:
 		row.add_child(_make_cell(
 			str(col["title"]), float(col["width"]), int(col["align"]), HEADER_FONT_SIZE, true))
 	parent.add_child(panel)
@@ -51,14 +63,14 @@ static func build_header(parent: Node) -> PanelContainer:
 
 
 ## 在 parent（VBox）下建数据行。rows 是 Dictionary 列表，key 见 COLUMNS。
-static func build_rows(parent: Node, rows: Array) -> void:
+static func build_rows(parent: Node, rows: Array, columns: Array = COLUMNS_ARCHIVE) -> void:
 	for i in rows.size():
 		var alt := (i % 2 == 1)
 		var pair := _new_row(ROW_ALT_BG if alt else Color(1, 1, 1, 0), false)
 		var panel: PanelContainer = pair[0]
 		var row: HBoxContainer = pair[1]
 		var data: Dictionary = rows[i]
-		for col in COLUMNS:
+		for col in columns:
 			row.add_child(_make_cell(
 				str(data.get(col["key"], "")), float(col["width"]),
 				int(col["align"]), ROW_FONT_SIZE, false))

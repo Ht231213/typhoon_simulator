@@ -11,6 +11,8 @@ extends Control
 ## 表格构建器（preload 而不是全局 class_name：新脚本没被编辑器扫描过时直接跑场景会报
 ## "Identifier AceTable not declared"，preload 更稳）
 const AceTableClass := preload("res://scripts/AceTable.gd")
+## 导出路径图片（和 ESC 菜单 / 设置导出页同一个导出器）
+const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
 
 @onready var title_label: Label = %ResultTitle
 @onready var summary_label: Label = %ResultSummary
@@ -18,6 +20,8 @@ const AceTableClass := preload("res://scripts/AceTable.gd")
 @onready var table_scroll: ScrollContainer = %TableScroll
 @onready var rows_box: VBoxContainer = %RowsBox
 @onready var save_label: Label = %SaveLabel
+@onready var export_hint: Label = %ExportHint
+@onready var export_button: Button = %ExportButton
 @onready var again_button: Button = %AgainButton
 @onready var menu_button: Button = %MenuButton
 
@@ -25,6 +29,7 @@ const AceTableClass := preload("res://scripts/AceTable.gd")
 func _ready() -> void:
 	again_button.pressed.connect(_on_again)
 	menu_button.pressed.connect(_on_menu)
+	export_button.pressed.connect(_on_export_pressed)
 	visible = false
 
 
@@ -45,7 +50,47 @@ func show_results(saved: bool) -> void:
 		save_label.text = "⚠ 存档写入失败，请检查 %s" % Game.save_path_absolute()
 
 	table_scroll.scroll_vertical = 0
+	export_hint.text = ""
+	export_button.text = "导出路径图片"
+	_refresh_export_button()
 	visible = true
+
+
+# ============================ 导出路径图片（2026-11-22） ============================
+# 和 ESC 暂停菜单 / 设置「导出」页同一个导出器（TrackExporter 离屏渲染 3000×2400）。
+# 只导出**已结束台风**的归档路径（需求 6 的规则）：本局结束时通常都已归档；
+# 结算瞬间仍在活跃的台风（风季结束会暂停）不会进图。
+
+func _path_layer() -> PathLayer:
+	var g := get_parent()
+	if g == null:
+		return null
+	return g.get_node_or_null("View/TopRow/MapArea/MapLayer/PathLayer") as PathLayer
+
+
+func _refresh_export_button() -> void:
+	var pl := _path_layer()
+	var can: bool = pl != null and pl.has_archived_tracks()
+	export_button.disabled = not can
+	export_button.tooltip_text = ("把地图 + 本局已结束台风的路径导出成 PNG（3000×2400）" if can
+		else "本局还没有已结束的台风路径")
+
+
+func _on_export_pressed() -> void:
+	if export_button.disabled:
+		return
+	var pl := _path_layer()
+	if pl == null:
+		export_hint.text = "导出失败：路径层不存在"
+		return
+	export_button.disabled = true
+	export_button.text = "导出中…"
+	export_hint.text = "正在导出…"
+	var exporter: RefCounted = TrackExporterClass.new()
+	var msg: String = await exporter.export_png(self, pl)
+	export_button.text = "导出路径图片"
+	_refresh_export_button()
+	export_hint.text = msg if msg != "" else "导出失败：本局还没有已结束的台风路径"
 
 
 ## ESC：回主菜单（大窗口没有「关掉再看地图」的意义——本局已经结束）
@@ -66,12 +111,12 @@ func _rebuild_table(vis: Array) -> void:
 	for c in rows_box.get_children():
 		c.queue_free()
 
-	AceTableClass.build_header(header_host)
+	AceTableClass.build_header(header_host, AceTableClass.COLUMNS_RESULTS)
 	var rows := _collect_rows(vis)
 	if rows.is_empty():
 		AceTableClass.build_empty(rows_box, "本局没有生成任何台风。")
 	else:
-		AceTableClass.build_rows(rows_box, rows)
+		AceTableClass.build_rows(rows_box, rows, AceTableClass.COLUMNS_RESULTS)
 
 
 func _collect_rows(vis: Array) -> Array:
