@@ -133,9 +133,17 @@ func _ready() -> void:
 	_single_sprite.z_index = 2
 	_single_sprite.visible = false
 	add_child(_single_sprite)
-	# 用户 2026-11-06：特效/粒子放到**图标最上面**（图标视频 z=1、单图 z=2）
+	# 用户 2026-11-18（**新决定，覆盖 2026-11-06 的"特效放最上面"**）：
+	#   **登陆特效放到台风图标【下面】**；ERI / note_ts 粒子保持最上层不动（用户只要求登陆特效）。
 	# ⚠ z_as_relative=false：用绝对 z，不受父节点/树序影响
-	for p in [_landfall_video, _fx_eri, _fx_note_ts]:
+	#   图标：视频 z=1（见 _make_video）、type=single 单图 z=2 → 登陆特效 z=0 就在它们下面。
+	_landfall_video.z_as_relative = false
+	_landfall_video.z_index = 0
+	# 内置方案（Default / Advanced default）的图标是**本层 _draw 画的**（没有子节点），
+	# 只靠 z 压不下去 → show_behind_parent 让它画在本层 _draw 之前，图标永远盖住登陆特效。
+	_landfall_video.show_behind_parent = true
+	# ERI / note_ts 粒子：用户只要求改登陆特效，这两个保持原样（最上层 z=20）
+	for p in [_fx_eri, _fx_note_ts]:
 		p.z_as_relative = false
 		p.z_index = 20
 	# 一次性特效：播完自己收掉
@@ -837,7 +845,17 @@ func _draw() -> void:
 			draw_circle(p, POINT_RADIUS + 1.0, POINT_OUTLINE)
 			draw_circle(p, POINT_RADIUS, POINT_COLOR)
 
-	# ③ 风圈 + 程序化兜底图标
+	# ③ 程序化登陆特效（视频缺失时）。
+	# ⚠ 用户 2026-11-18：登陆特效要在**台风图标下面** → 必须在画图标之前画。
+	for fx in landfall_effects:
+		var t := float(fx["age"]) / float(fx["ttl"])
+		var pos: Vector2 = fx["pos"]
+		var kt := float(fx["kt"])
+		var col := Const.track_color(kt)
+		draw_arc(pos, 12.0 + 70.0 * t, 0.0, TAU, 48, Color(col.r, col.g, col.b, (1.0 - t) * 0.9), 4.0, true)
+		draw_arc(pos, 6.0 + 34.0 * t, 0.0, TAU, 32, Color(1, 1, 1, (1.0 - t) * 0.7), 2.0, true)
+
+	# ④ 风圈 + 程序化兜底图标（在登陆特效**上面**）
 	if live_visible:
 		var c := _track_color_at(live_intensity, live_phase)
 		# 风圈：内置方案（Default / Advanced default）画；方案包（SMCY 等）不画（用户 2026-10-31）
@@ -849,15 +867,6 @@ func _draw() -> void:
 			draw_arc(live_position, ring_r, 0.0, TAU, 72, Color(c, 0.28 * _icon_fade), 1.5, true)
 		elif _procedural_icon or (_icon_video != null and not _icon_video.visible and not _icon_fading):
 			_draw_procedural_icon(c)
-
-	# ④ 程序化登陆特效（视频缺失时）
-	for fx in landfall_effects:
-		var t := float(fx["age"]) / float(fx["ttl"])
-		var pos: Vector2 = fx["pos"]
-		var kt := float(fx["kt"])
-		var col := Const.track_color(kt)
-		draw_arc(pos, 12.0 + 70.0 * t, 0.0, TAU, 48, Color(col.r, col.g, col.b, (1.0 - t) * 0.9), 4.0, true)
-		draw_arc(pos, 6.0 + 34.0 * t, 0.0, TAU, 32, Color(1, 1, 1, (1.0 - t) * 0.7), 2.0, true)
 
 
 ## 程序化图标：
