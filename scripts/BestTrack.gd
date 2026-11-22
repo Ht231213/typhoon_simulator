@@ -150,6 +150,9 @@ func begin_track(storm) -> void:
 	if _index_of(storm) >= 0:
 		return
 	_active.append({
+		# ⑤A-1 多台风：用**实例 ID** 作唯一 key（depression_number 是 90–99 循环，
+		# 并发超过 10 场会重号；旧实现用它做 _index_of 的 key，多台模式必须换）
+		"storm_id": storm.get_instance_id(),
 		"dep_number": int(storm.depression_number),
 		"storm_number": int(storm.storm_number),
 		"name_en": "(nameless)",
@@ -207,6 +210,14 @@ func sample(storm) -> void:
 	})
 
 
+## 丢弃某场台风的**进行中**记录（点「停止模拟」用：不计入最佳路径数据集）。
+## 旧实现取消时什么都不做 → _active 里留一条永不结束的记录，跨年写盘会被它一直挡住。
+func discard_track(storm) -> void:
+	var idx := _index_of(storm)
+	if idx >= 0:
+		_active.remove_at(idx)
+
+
 ## 台风结束：归档。end_code 按参考的 F 字段语义，我们能填 0/2/3。
 func end_track(storm) -> void:
 	var idx := _index_of(storm)
@@ -246,8 +257,9 @@ func flush_year(export_dir: String) -> String:
 # ============================ 内部 ============================
 
 func _index_of(storm) -> int:
+	var sid: int = storm.get_instance_id()
 	for i in _active.size():
-		if int(_active[i]["dep_number"]) == int(storm.depression_number):
+		if int(_active[i].get("storm_id", -1)) == sid:
 			return i
 	return -1
 

@@ -144,10 +144,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## 现在能不能直接在地图上开始标路径点（点地图自动进入投放环节用）。
 ## 条件与侧栏「添加台风」按钮保持一致，避免两边判定不一致。
+## ⑤A-1 多台风：已有台风时**也能继续添加**（只受上限/风季/冷却限制）。
 func _can_auto_place() -> bool:
 	if sim == null:
 		return false
-	if sim.season_over or sim.active_storm != null:
+	if sim.season_over:
 		return false
 	if sim.paused:
 		return false

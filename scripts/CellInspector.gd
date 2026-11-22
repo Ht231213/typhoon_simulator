@@ -204,5 +204,6 @@ func _describe(world: Vector2, idx: int) -> String:
 func _active_wind() -> float:
 	if sim == null:
 		return 0.0
-	var s = sim.active_storm
+	# ⑤A-1 多台风：用"选中的那场"（focus_storm）
+	var s = sim.focus_storm()
 	return s.wind_kt if s != null else 0.0

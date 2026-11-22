@@ -56,16 +56,37 @@ func resume() -> void:
 	get_tree().paused = false
 
 
-## 本局已自然结束的台风列表。点「停止模拟」的台风不进这里（也不计入 ACE）。
+## 本局台风列表：⑤A-1 多台风起分「进行中」和「已完成」两组。
+## 点「停止模拟」的台风不进已完成列表（也不计入 ACE）。
 ## ⚠ 用 visible_records()：默认只列热带风暴级及以上，
 ##   打开「记录热带扰动和低压」后连 <30 kt 的扰动也一并列出。
 func _refresh_storm_list() -> void:
 	var vis := Game.visible_records()
-	list_title.text = "本次台风列表（%d 场）    总 ACE %.2f" % [vis.size(), Game.total_ace]
-	if vis.is_empty():
-		storm_list.text = "[i][color=#889]还没有自然结束的台风。[/color][/i]"
-		return
+	var sim := get_parent().get_node_or_null("View/MapArea/MapLayer/TyphoonSim") as TyphoonSim
+	var running: Array = sim.storms if sim != null else []
+	var title := "本次台风列表（已完成 %d 场" % vis.size()
+	if not running.is_empty():
+		title += " · 进行中 %d 场" % running.size()
+	title += "）    总 ACE %.2f" % Game.total_ace
+	list_title.text = title
+
 	var lines := PackedStringArray()
+	if not running.is_empty():
+		lines.append("[b]进行中（%d 场）[/b]" % running.size())
+		for i in running.size():
+			var s: Storm = running[i]
+			lines.append("  %s %s  %3d kt  %4d hPa  %s" % [
+				s.number_text(), s.name_label(),
+				int(roundf(s.wind_kt)), int(roundf(s.central_pressure)),
+				s.latlon_text()])
+		lines.append("")
+	if vis.is_empty():
+		if running.is_empty():
+			storm_list.text = "[i][color=#889]还没有台风。[/color][/i]"
+		else:
+			storm_list.text = "\n".join(lines)
+		return
+	lines.append("[b]已完成（%d 场）[/b]" % vis.size())
 	for i in vis.size():
 		lines.append(Game.format_record(vis[i]))
 	storm_list.text = "\n".join(lines)

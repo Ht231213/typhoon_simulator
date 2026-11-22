@@ -814,6 +814,15 @@ const WARM_RECOVERY_STEP := 0.05
 ## 风季模式的时长
 const SEASON_MONTHS := 12
 
+## ⑤A-1 多台风：同屏最多同时存在的台风数（用户 2026-11-22 定 6）
+const MAX_ACTIVE_STORMS := 6
+## ⑤A-1：**自动模式（非风季）**两场投放之间的间隔（模拟天）。
+## 不能沿用风季的 5~15 天：自动模式台风寿命约 7~9 天，5~15 天间隔几乎不会并存；
+## 2~6 天 → 同屏常见 2~3 场（风季仍用 DEPLOY_COOLDOWN_MIN/MAX 保持原来的节奏）。
+const AUTO_DEPLOY_GAP_MIN := 2.0
+const AUTO_DEPLOY_GAP_MAX := 6.0
+
+
 ## 上一场台风结束后，需要等待多少模拟日才允许投放下一场（随机区间）
 const DEPLOY_COOLDOWN_MIN := 5.0
 const DEPLOY_COOLDOWN_MAX := 15.0

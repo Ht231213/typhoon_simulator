@@ -24,10 +24,16 @@ const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
 @onready var pause_button: Button = %PauseButton
 @onready var export_button: Button = %ExportButton
 @onready var stop_button: Button = %StopButton
+@onready var stop_all_button: Button = %StopAllButton
 @onready var date_button: Button = %DateButton
 @onready var clear_points_button: Button = %ClearPointsButton
 @onready var undo_point_button: Button = %UndoPointButton
 @onready var cancel_button: Button = %CancelButton
+## ⑤A-1 多台风：「选中台风」下拉（只在 >1 场时显示）
+@onready var storm_select_row: HBoxContainer = %StormSelectRow
+@onready var storm_select: OptionButton = %StormSelect
+## 下拉列表的"签名"，只有台风数量/编号/名称变了才重建（避免每帧重建下拉框）
+var _storm_select_sig := ""
 ## 「撤销 / 清空路径点」所在的行。这行始终保留固定高度，避免按钮显隐时侧栏跳动。
 @onready var path_buttons_row: HBoxContainer = %PlacementRow
 ## 「取消」所在的行，同样预留高度
@@ -51,10 +57,12 @@ func _ready() -> void:
 	pause_button.pressed.connect(_on_pause_pressed)
 	export_button.pressed.connect(_on_export_pressed)
 	stop_button.pressed.connect(_on_stop_pressed)
+	stop_all_button.pressed.connect(_on_stop_all_pressed)
 	date_button.pressed.connect(_on_date_pressed)
 	clear_points_button.pressed.connect(_on_clear_points_pressed)
 	undo_point_button.pressed.connect(_on_undo_point_pressed)
 	cancel_button.pressed.connect(_on_cancel_pressed)
+	storm_select.item_selected.connect(_on_storm_selected)
 
 	date_dialog.confirmed.connect(_on_date_confirmed)
 
@@ -74,6 +82,7 @@ func _ready() -> void:
 func _on_clock_ticked() -> void:
 	title_label.text = sim.status_title()
 	info_label.text = "\n".join(sim.status_lines())
+	_refresh_storm_select()
 
 
 # ============================ 刷新 ============================
@@ -81,7 +90,26 @@ func _on_clock_ticked() -> void:
 func refresh() -> void:
 	title_label.text = sim.status_title()
 	info_label.text = "\n".join(sim.status_lines())
+	_refresh_storm_select()
 	_refresh_button_visibility()
+
+
+## ⑤A-1 多台风：「选中台风」下拉（只在 >1 场时显示）。
+## 台风命名后编号/名称会变，所以用签名判断是否要重建列表（每帧调用也便宜）。
+func _refresh_storm_select() -> void:
+	var sig := ""
+	for s in sim.storms:
+		sig += "%s|%s|%d;" % [s.number_text(), s.name_label(), s.get_instance_id()]
+	var focus := sim.focus_storm()
+	var idx := sim.storms.find(focus)
+	if sig != _storm_select_sig:
+		_storm_select_sig = sig
+		storm_select.clear()
+		for s in sim.storms:
+			storm_select.add_item("%s %s" % [s.number_text(), s.name_label()])
+	if idx >= 0 and storm_select.item_count > idx and storm_select.selected != idx:
+		storm_select.select(idx)
+	storm_select_row.visible = sim.storms.size() > 1
 
 
 func _refresh_button_visibility() -> void:
@@ -91,6 +119,7 @@ func _refresh_button_visibility() -> void:
 	var can := sim.can_deploy_now()
 	var has_points: bool = path_editor.waypoint_count() > 0
 	var placing: bool = path_editor.in_placement
+	var active_count := sim.storms.size()
 
 	# ── 投放环节：进入后除「投放台风」「撤销路径点」「清空路径点」「取消」外全部隐藏 ──
 	if placing:
@@ -101,6 +130,7 @@ func _refresh_button_visibility() -> void:
 		cancel_button.visible = true
 		pause_button.visible = false
 		stop_button.visible = false
+		stop_all_button.visible = false
 		date_button.visible = false
 	else:
 		# ── 普通状态 ──
@@ -111,9 +141,11 @@ func _refresh_button_visibility() -> void:
 		cancel_button.visible = false
 		# 暂停时间轴：所有模式都出现
 		pause_button.visible = not over
-		# 停止模拟：仅手动 + 非风季 + 有活跃台风
+		# 停止模拟：仅手动 + 非风季 + 有活跃台风（⑤A-1：停"选中的那一场"）
 		# （风季限制操作性功能，「停止模拟」会让玩家规避冷却）
-		stop_button.visible = manual and not sim.season_mode and sim.active_storm != null
+		stop_button.visible = manual and not sim.season_mode and active_count > 0
+		# 全部停止：多台时才出现（⑤A-1 新增）
+		stop_all_button.visible = manual and not sim.season_mode and active_count > 1
 		# 调整日期：仅手动 + 非风季（风季下算作弊）
 		date_button.visible = manual and not sim.season_mode
 		# 单位切换按钮已删除（1.2.0）：设置 → 模拟设置 → 单位设置 里已经有了
@@ -129,10 +161,13 @@ func _refresh_button_visibility() -> void:
 	add_button.disabled = (not can and not placing) or (sim.paused and not placing)
 	if placing:
 		add_button.disabled = not has_points          # 没标点就不能投放
+	elif over:
+		add_button.text = "风季已结束"
 	elif cooling:
 		add_button.text = "冷却中…"
-	elif sim.active_storm != null:
-		add_button.text = "模拟中…"
+	elif active_count >= Const.MAX_ACTIVE_STORMS:
+		add_button.text = "已达上限 %d 场" % Const.MAX_ACTIVE_STORMS
+		add_button.disabled = true
 	else:
 		add_button.text = "＋ 添加台风"
 
@@ -141,13 +176,12 @@ func _refresh_button_visibility() -> void:
 	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
 
-	# 「导出图片」（1.3 ④）：**随时暂停随时导出**——有历史归档，或当前这场已经走出折线
-	# （第一场台风还没结束时暂停也要能导出那半截路径，用户 2026-11-22 定）。
+	# 「导出图片」（1.3 ④）：**随时暂停随时导出**——有历史归档，或当前已跑出的轨迹
+	# （⑤A-1 多台后，当前轨迹在各自的视图里，所以用 has_visible_tracks() 统一判断）。
 	# ⚠ 位置在「暂停模拟」按钮下面；ESC 暂停菜单不加。
 	# ⚠ 变量名是 path_layer（见文件头 @onready），不是 path。
 	export_button.visible = (not placing) and sim.paused and not over \
-		and path_layer != null \
-		and (path_layer.has_archived_tracks() or path_layer.points.size() >= 2)
+		and path_layer != null and path_layer.has_visible_tracks()
 
 
 func _on_storm_finished(_rec: Game.StormRecord) -> void:
@@ -236,6 +270,18 @@ func _on_export_pressed() -> void:
 
 func _on_stop_pressed() -> void:
 	sim.stop_simulation()
+	refresh()
+
+
+## ⑤A-1「全部停止」：把所有活跃台风都按「停止模拟」处理
+func _on_stop_all_pressed() -> void:
+	sim.stop_all_storms()
+	refresh()
+
+
+## ⑤A-1「选中台风」下拉切换：只换"选中"，不影响模拟
+func _on_storm_selected(index: int) -> void:
+	sim.select_storm_index(index)
 	refresh()
 
 

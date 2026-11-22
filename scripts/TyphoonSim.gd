@@ -26,7 +26,14 @@ var auto_mode := false
 var season_mode := false
 
 # ------------------------- 本局状态 -------------------------
-var active_storm: Storm = null
+## ⑤A-1 多台风：当前所有活跃台风（顺序 = 投放顺序），上限 Const.MAX_ACTIVE_STORMS。
+## 每场台风是独立 Storm 对象；显示/音效状态各自独立。
+var storms: Array[Storm] = []
+## 每场活跃台风的**显示视图**（Storm → PathLayer 实例，见 PathLayer.create_storm_view）。
+## 本层的 path（%PathLayer）只画历史归档 + 投放点；每个台风视图画自己的图标/风圈/当前轨迹。
+var storm_views: Dictionary = {}
+## 侧栏「选中台风」下拉选中的那场；无效时自动回落到第一场（见 focus_storm）。
+var selected_storm: Storm = null
 var paused := false
 var season_over := false
 ## 风速显示单位：0=kt 1=m/s 2=km/h。
@@ -57,14 +64,9 @@ var _bg_players: Dictionary = {}
 ## 事件音效冷却（毫秒）：防止档位在边界来回抖导致"滴滴滴"
 const EVENT_SFX_COOLDOWN_MS := 2000
 var _event_sfx_last_ms: Dictionary = {}
-## 上一 tick 的类别（用来判断升档/降档）；999 = 还没初始化
-var _prev_category := 999
-## 上一 tick 的风速（跨门槛判定用）
-var _prev_kt := 0.0
-## 上一 tick 的变性阶段（转入 EXTRATROPICAL 的那一刻放 disperse）
-var _prev_phase := 0
-## 最近 1 秒内的档位变化记录（E 组「连跳两级」判定）: [{"ms": int, "from": int, "to": int}]
-var _cat_hist: Array = []
+## ⑤A-1 多台风：**每场台风独立的档位音效状态**（不能用单例字段，否则多台会互相打架）
+##   key = storm.get_instance_id() → {"prev_category","prev_kt","prev_phase","cat_hist"}
+var _sfx_state: Dictionary = {}
 
 
 
@@ -106,21 +108,36 @@ func _ready() -> void:
 # ============================ 主循环 ============================
 
 func _physics_process(delta: float) -> void:
-	# 空闲加速：没有活跃台风时按 1 秒/天，有台风时按 4 秒/天。
+	# 空闲加速：没有任何活跃台风时按 1 秒/天，有台风时按 4 秒/天。
 	# ⚠ 电影模式先不加速（以后电影模式会有自己的节奏）。
-	SimClock.idle_boost = active_storm == null and Game.mode != Game.Mode.CINEMATIC
+	SimClock.idle_boost = storms.is_empty() and Game.mode != Game.Mode.CINEMATIC
 
-	if paused or season_over or active_storm == null:
+	if paused or season_over or storms.is_empty():
 		return
-	var storm := active_storm
-	# 模拟时间只用来推进路径和日历（1 真实秒 = 6 模拟小时 → 1 段 1 秒）。
 	var sim_delta := SimClock.days_from_seconds(delta)
 
+	# ⑤A-1 多台风：逐场推进。本 tick 判散的台风先收集，循环结束再统一收尾
+	#（遍历 storms 时不能直接删元素）
+	var finished: Array[Storm] = []
+	for storm in storms:
+		_step_storm(storm, sim_delta, finished)
+	for storm in finished:
+		_finish_storm(storm)
+	# 背景循环音效只跟「选中的那一场」走（多台时不会几个 bgs 叠在一起）
+	_update_background_sfx()
+
+
+## 推进单场台风一个物理 tick（原来的整段 _physics_process 逻辑，参数化到每场）。
+## finished：本 tick 判散了就把自己塞进去，由 _physics_process 循环后统一 _finish_storm。
+func _step_storm(storm: Storm, sim_delta: float, finished: Array[Storm]) -> void:
+	if storm == null:
+		return
+	var view := _view_of(storm)
 	# ① 推进路径（纯时间插值）。
 	#    参考在每走完一段之后才 CALL 更新ACE，所以这里也要按段结算。
 	var seg_before := storm.segment
 	storm.advance_track(sim_delta)
-	# ③ 自动模式：路径快用完就向前延伸（用户 2026-11-07）
+	# ③ 自动模式：路径快用完就向前延伸（用户 2026-11-07）——每场独立判断
 	_extend_auto_track(storm)
 	for _i in range(storm.segment - seg_before):
 		storm.settle_segment()
@@ -130,6 +147,13 @@ func _physics_process(delta: float) -> void:
 	var cell := Const.cell_index_from_world(pos)
 	storm.sst_here = minf(Const.SST_READ_CAP, field.sst_at(cell) + SimClock.seasonal_sst_amplitude())
 	storm.latitude = storm.current_lonlat().y
+	# ③.0 自动模式「移出地图」判定的兜底：只看台风**本体**是否真的出图。
+	#    ⚠ 2026-11-22 修 BUG：以前 _extend_auto_track 把「前瞻路径点越界」直接当成台风出图，
+	#      导致台风在 50~55°N（离北界 70°N 还差 15~20°）就被当 tick 杀掉，
+	#      ET/ST/EC 只活 0.1~0.8 天（prober 250 年统计被系统性截断）。
+	#      现在前瞻越界只表示"没法再往前铺路"，真正出图要等本体位置越界或走到最后有效点。
+	if auto_mode and (pos.x < 0.0 or pos.x > Const.MAP_W or pos.y < 0.0 or pos.y > Const.MAP_H):
+		storm.out_of_map = true
 
 	# ③ 登陆判定（用户 2026-11-06：**变性中/变性后不算登陆** —— 温带气旋没有"登陆"概念）
 	var was_landfall := storm.landfall
@@ -156,13 +180,9 @@ func _physics_process(delta: float) -> void:
 
 	# ⑥ 强度积分：参考的「计算风速增量」+「更新台风状态」。
 	#    ⚠ ΔKt 是**每个 tick 直接加的增量**，不要再乘 sim_delta、也不要再乘系数。
-	#    帧率由 config/simulation.cfg 决定（默认 30 Hz），对应参考的 wait(0.01) 每轮一次。
-	#    ⚠ 没有 MPI 上限——按你的决定删掉了，参考里也没有（能涨到几百节）。
 	storm.wind_kt = maxf(0.0, storm.wind_kt + _wind_delta_rate(storm))
 
 	# ⑦ 编号与命名（两套独立计数、两个不同阈值）
-	#    Kt > 30 → 换上【热带风暴编号】0XW
-	#    Kt > 33 → 从命名表取名，并从这一刻起才计入 ACE
 	if storm.storm_number <= 0 and storm.wind_kt > Const.STORM_NUMBER_THRESHOLD_KT:
 		storm.assign_storm_number(Game.next_storm_number())
 		notice.emit("增强为热带风暴，编号 %s" % storm.number_text())
@@ -172,26 +192,21 @@ func _physics_process(delta: float) -> void:
 		storm.name_committed = true
 		notice.emit("%s 增强为台风，命名 %s" % [storm.number_text(), storm.storm_name])
 
-	# ⑧ 反馈与显示
+	# ⑧ 反馈与显示（画到**这场台风自己的视图**里）
 	# 冷水坑：风场搅起深层冷水，海温下降 → 反过来抑制台风自己。
 	field.update_cooling(storm, cell)
-	# 参考「计算海区与气压」最后一步：`replace item 对应海区 of 气压数据 with 气压`
 	# 把当前中心气压写进所在格，气压图层才有东西显示。
 	field.set_pressure_at(cell, storm.central_pressure)
-	path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
+	view.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 	# 类别与巅峰值连续更新（参考就是在每轮循环里调的）
 	storm.tick_live()
 	_check_category_sfx(storm)
-	_update_background_sfx(storm.wind_kt, int(storm.category))
-
-	# ⑨ 最佳路径采样（内部按 6 模拟小时节流，不是每 tick 都记）
+	# ⑨ 最佳路径采样（每场独立）
 	best_track.sample(storm)
 
-	# 消散判定：路径走完，或者**已经弱到残涡**（<15 kt）。
-	# ⚠ 阈值 15 kt（1.2.1 由 0.5 改来）：热带低压下限是 17 kt，<15 kt 已经不是
-	#   热带气旋而是残余环流了，没必要继续挂在地图上。
-	#   ⚠ 这条依赖陆地衰减的 Vb 已改成 8 kt —— 旧 Vb=26.7 时强度永远降不到 15，阈值形同虚设。
-	# ③ 自动模式终止：消散（kt<=0.5）或移出地图；手动模式仍是路径走完
+	# 消散判定：路径走完，或者**已经弱到残涡**（<15 kt），或者自动模式真的出图。
+	#   ⚠ 阈值 15 kt（1.2.1 由 0.5 改来）：热带低压下限是 17 kt，<15 kt 已经不是
+	#     热带气旋而是残余环流了，没必要继续挂在地图上。
 	var auto_end := auto_mode and (storm.wind_kt <= 0.5 or storm.out_of_map)
 	var track_end := storm.track_done() and (not auto_mode or storm.waypoints.size() >= 600)
 	if track_end and int(storm.phase) == 1:
@@ -199,10 +214,10 @@ func _physics_process(delta: float) -> void:
 		storm.phase = Storm.Phase.EXTRATROPICAL
 		storm.transition_days = 0.0
 		storm.tick_live()
-		path.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
+		view.set_live_position(pos, storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 		_on_phase_changed(storm, Storm.Phase.TRANSITIONING)
 	if storm.wind_kt <= 0.5 or auto_end or track_end:
-		_finish_storm()
+		finished.append(storm)
 
 
 ## 原「计算风速增量」。返回值单位：节/天。
@@ -580,9 +595,9 @@ func on_deploy_cooldown() -> bool:
 	return days_until_deploy() > 0.0
 
 
-## 是否允许投放：没有活跃台风、风季未结束、且不在冷却期
+## 是否允许投放：同屏未达上限、风季未结束、且不在冷却期（⑤A-1：不再要求"没有活跃台风"）
 func can_deploy_now() -> bool:
-	return active_storm == null and not season_over and not on_deploy_cooldown()
+	return storms.size() < Const.MAX_ACTIVE_STORMS and not season_over and not on_deploy_cooldown()
 
 
 ## 取当前该用的路径点：自动模式用内置固定路径，手动模式用玩家标好的
@@ -605,10 +620,11 @@ func _build_auto_waypoints() -> PackedVector2Array:
 	return pts
 
 
-## 统一的投放入口。带冷却检查，成功返回 true。
+## 统一的投放入口。带冷却/上限检查，成功返回 true。
+## ⑤A-1 多台风：已有台风时**也可以继续投放**（只要还没到 6 场上限）。
 func try_deploy() -> bool:
-	if active_storm != null:
-		notice.emit("已有一场台风在运行，等它结束再投放")
+	if storms.size() >= Const.MAX_ACTIVE_STORMS:
+		notice.emit("最多同时 %d 场台风，先停掉一场再投放" % Const.MAX_ACTIVE_STORMS)
 		return false
 	if season_over:
 		notice.emit("风季已结束")
@@ -651,25 +667,77 @@ func _extend_auto_track(storm: Storm) -> void:
 	dir = dir.lerp(Vector2(0.55, -0.83).normalized(), turn).normalized()
 	var step := maxf(last.distance_to(prev), 1.0)
 	var p := last
+	var blocked := false
 	for i in 6:
 		p += dir * step
 		if p.x < 0.0 or p.x > Const.MAP_W or p.y < 0.0 or p.y > Const.MAP_H:
-			storm.out_of_map = true
+			# ⚠ 只是"无法继续往前铺路"——**不能**在这里判台风出图（BUG 修复，2026-11-22）
+			blocked = true
 			break
 		w.append(p)
 	storm.waypoints = w
+	# 路径已铺到地图边界：等台风本体真的走到最后这个有效点，才判「移出地图」结束。
+	# （track_done() 要到末点才为 true，所以期间会每 tick 重试，代价可忽略）
+	if blocked and storm.track_done():
+		storm.out_of_map = true
 
-## 自动模式：直接投放下一个（内部仍走 try_deploy 的冷却检查）
+## 自动模式：直接投放下一个（内部仍走 try_deploy 的冷却/上限检查）
 func deploy_auto_storm() -> void:
 	if auto_mode:
 		try_deploy()
 
 
-## 清场：直接丢弃当前台风，不走「停止模拟」那套编号/名称回退。
-## 只给自检和标定脚本用，游戏里不要调（玩家应该用 stop_simulation）。
+# ============================ ⑤A-1 多台风：选中 / 视图 ============================
+
+func active_storm_count() -> int:
+	return storms.size()
+
+
+func has_active_storms() -> bool:
+	return not storms.is_empty()
+
+
+## 当前「选中」的台风（UI 用）：选中项失效时自动回落到第一场
+func focus_storm() -> Storm:
+	if selected_storm != null and storms.has(selected_storm):
+		return selected_storm
+	return storms[0] if not storms.is_empty() else null
+
+
+## 切换选中的台风（侧栏下拉用）
+func select_storm(storm: Storm) -> void:
+	selected_storm = storm if storms.has(storm) else focus_storm()
+	state_changed.emit()
+
+
+func select_storm_index(index: int) -> void:
+	if index >= 0 and index < storms.size():
+		select_storm(storms[index])
+
+
+## 取（必要时创建）某场台风的显示视图
+func _view_of(storm: Storm) -> PathLayer:
+	var view: PathLayer = storm_views.get(storm, null)
+	if view == null or not is_instance_valid(view):
+		view = path.create_storm_view()
+		storm_views[storm] = view
+	return view
+
+
+## 清空所有活跃台风（只给自检/标定脚本用；玩家用 stop_simulation / stop_all_storms）
 func discard_storm_for_test() -> void:
-	active_storm = null
+	for storm in storms.duplicate():
+		var view: PathLayer = storm_views.get(storm, null)
+		if view != null and is_instance_valid(view):
+			path.live_views.erase(view)
+			view.queue_free()
+		best_track.discard_track(storm)
+	storm_views.clear()
+	_sfx_state.clear()
+	storms.clear()
+	selected_storm = null
 	path.clear_track()
+	_stop_background_sfx()
 
 
 ## 手动模式：玩家点完路径点后调用
@@ -697,15 +765,24 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	# 参考在「开始模拟」时按起始纬度定一次半球，之后不再改
 	storm.start_latitude = storm.latitude
 	storm.northern = storm.latitude > 0.0
-	active_storm = storm
-	# 1.3 ④：只清「当前轨迹」，历史归档保留（原来 clear_track() 会把上一场也清掉）
-	path.begin_new_track()
-	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
+	# ⑤A-1 多台风：加入活跃列表 + 建立本场独立的显示视图（图标/风圈/当前轨迹）
+	storms.append(storm)
+	selected_storm = storm
+	var view := path.create_storm_view()
+	storm_views[storm] = view
+	view.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int,
+		storm.sst_here, storm.latitude, storm.subtype_st)
+	_sfx_of(storm)          # 初始化本场的音效跟踪状态
+	# 部署冷却：从**投放时**起算（多台模式下允许多场并存，但部署节奏仍受限制）
+	if season_mode:
+		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
+			Const.DEPLOY_COOLDOWN_MIN, Const.DEPLOY_COOLDOWN_MAX)
+	elif auto_mode:
+		# 非风季自动模式：间隔短一些（2~6 天），否则 5~15 天的冷却基本不会出现多台并存
+		next_deploy_day = SimClock.sim_days() + _rng.randf_range(
+			Const.AUTO_DEPLOY_GAP_MIN, Const.AUTO_DEPLOY_GAP_MAX)
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
-	_prev_category = 999
-	_prev_kt = storm.wind_kt
-	_cat_hist.clear()
 	notice.emit("已生成台风胚胎 %s" % storm.number_text())
 	state_changed.emit()
 
@@ -717,7 +794,23 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 ##   mainicon.sound.c5      达到 170 kt（ID 已改名，见规范）
 ##   mainicon.sound.eri     1 秒内连跳两级且 ≥C1（在粒子事件里）
 ##   mainicon.sound.disperse 消散 / 转成温带
+## ⑤A-1 多台风：每场台风独立的档位音效状态（单例字段会在多台下互相打架）
+func _sfx_of(storm: Storm) -> Dictionary:
+	var key := storm.get_instance_id()
+	var d: Dictionary = _sfx_state.get(key, {})
+	if d.is_empty():
+		d = {
+			"prev_category": 999,
+			"prev_kt": float(storm.wind_kt),
+			"prev_phase": 0,
+			"cat_hist": [],
+		}
+		_sfx_state[key] = d
+	return d
+
+
 func _check_category_sfx(storm: Storm) -> void:
+	var st := _sfx_of(storm)
 	var cat := int(storm.category)
 	var kt := storm.wind_kt
 	var phase := int(storm.phase)
@@ -726,22 +819,22 @@ func _check_category_sfx(storm: Storm) -> void:
 	# 用户 2026-11-06 补充：两种情况都要播 disperse，并且只播一次（同 tick 由冷却去重）
 	#   ① **开始变性**（phase 0→1 那一刻）——不是变性完成（1→2）
 	#   ② 减弱为残余环流（kt 跌破 15 kt）
-	if int(_prev_phase) == 0 and phase == 1:
+	if int(st["prev_phase"]) == 0 and phase == 1:
 		_play_event_sfx("disperse")
-	if _prev_kt >= 15.0 and kt < 15.0:
+	if float(st["prev_kt"]) >= 15.0 and kt < 15.0:
 		_play_event_sfx("disperse")
-	_prev_phase = phase
+	st["prev_phase"] = phase
 	# ST 段屏蔽档位音效（避免 CAT -4→-5→-4 误触发强化/减弱）；disperse 已在上面处理
 	if storm.subtype_st or cat == Const.CAT_SUBTROPICAL:
-		_prev_category = cat
-		_prev_kt = kt
+		st["prev_category"] = cat
+		st["prev_kt"] = kt
 		return
-	if cat == _prev_category:
-		_prev_kt = kt
+	if cat == int(st["prev_category"]):
+		st["prev_kt"] = kt
 		return
-	var prev := _prev_category
-	_prev_category = cat
-	_prev_kt = kt
+	var prev := int(st["prev_category"])
+	st["prev_category"] = cat
+	st["prev_kt"] = kt
 	if prev == 999:
 		return                          # 第一个 tick 只记状态
 	# 跨档时按「跨过了哪些门槛」放对应的声音
@@ -749,29 +842,31 @@ func _check_category_sfx(storm: Storm) -> void:
 		_play_event_sfx("ts")
 	if prev < Const.CAT_C5 and cat >= Const.CAT_C5:
 		_play_event_sfx("suty")           # 一次性（不循环）
-	_check_particle_events(storm, prev, cat)
+	_check_particle_events(storm, prev, cat, st)
 
 
 ## E 组（2026-10-31）：档位瞬间特效
 ##   note_ts → TD(-1) 增强为 TS(0) 的那一下（**不做相位对齐**）
 ##   eri     → 1 秒内累计升 ≥2 级，且跳完 ≥ C1
-func _check_particle_events(storm: Storm, prev: int, cat: int) -> void:
+func _check_particle_events(storm: Storm, prev: int, cat: int, st: Dictionary) -> void:
 	var now := Time.get_ticks_msec()
-	_cat_hist.append({"ms": now, "from": prev, "to": cat})
-	while not _cat_hist.is_empty() and now - int(_cat_hist[0]["ms"]) > 1000:
-		_cat_hist.pop_front()
+	var hist: Array = st["cat_hist"]
+	hist.append({"ms": now, "from": prev, "to": cat})
+	while not hist.is_empty() and now - int(hist[0]["ms"]) > 1000:
+		hist.pop_front()
+	var view := _view_of(storm)
 	# note_ts：TD → TS 的瞬间
 	if prev == Const.CAT_DEPRESSION and cat == Const.CAT_TROPICAL_STORM:
-		path.play_effect_video("note_ts", storm.current_world_position())
+		view.play_effect_video("note_ts", storm.current_world_position())
 		_play_event_sfx("ts")
 	# ERI：统计 1 秒内的累计升幅
 	var gain := 0
-	for e in _cat_hist:
+	for e in hist:
 		gain += int(e["to"]) - int(e["from"])
 	if gain >= 2 and cat >= Const.CAT_C1:
-		path.play_effect_video("eri", storm.current_world_position())
+		view.play_effect_video("eri", storm.current_world_position())
 		_play_event_sfx("eri")
-		_cat_hist.clear()          # 同一波只放一次
+		hist.clear()               # 同一波只放一次
 
 
 ## 一次性事件音效 kind → 方案包内事件 ID（docs/图标方案-ZIP格式规范.md §六）
@@ -802,9 +897,14 @@ func _stop_background_sfx() -> void:
 ##   · 播哪个 = 方案包 index.json 里「当前图标 ID」的 effect.bgs 声明
 ##     （见 PathLayer.current_bgs_id；SMCY1.3 里 c4 图标→bgs.c4、c5 图标 137~169→bgs.c4、≥170→bgs.c5_170）
 ##   · 当前显示 EX / ST / 其它非档位图标 → 没有 bgs 声明 → 完全静音（清单 C11）
-##   · 不再判断 phase：图标系统本身已按 phase 切 ex/ss，音效跟着实际显示的图标走即可。
-func _update_background_sfx(_kt: float, _cat: int) -> void:
-	var want_id := path.current_bgs_id()
+##   · ⑤A-1 多台风：bgs **只跟选中的那一场**（否则几场同时播会叠成噪音）
+func _update_background_sfx() -> void:
+	var want_id := ""
+	var s := focus_storm()
+	if s != null:
+		var view: PathLayer = storm_views.get(s, null)
+		if view != null and is_instance_valid(view):
+			want_id = view.current_bgs_id()
 	for kind in _bg_players.keys():
 		var p := _bg_players[kind] as AudioStreamPlayer
 		if p == null or p.stream == null:
@@ -886,28 +986,31 @@ func _track_meta(storm: Storm, rec: Game.StormRecord = null, completed := true) 
 	return meta
 
 
-## 台风「正常结束」（走完路径 / 减弱消散）。按 {1} 的规定：
+## 一场台风「正常结束」（走完路径 / 减弱消散 / 出图）。按 {1} 的规定：
 ##   ① 台风总计数 +1（与编号系统分开管理）
 ##   ② 它的 ACE 计入全年总 ACE
 ##   ③ 它的数据存入台风列表
-## 点「停止模拟」不走这里，走 cancel_storm()，以上三项都不做。
-func _finish_storm() -> void:
-	if active_storm == null:
+## ⑤A-1：带 storm 参数（多台模式下逐个结束）；点「停止模拟」不走这里，走 cancel_storm()。
+func _finish_storm(storm: Storm) -> void:
+	if storm == null or not storms.has(storm):
 		return
-	var storm := active_storm
 	storm.end_sim_day = SimClock.sim_days()
 	var rec := storm.to_record()
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
 	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
-	# 1.3 ④：本局路径**一定保留**（收进 PathLayer 的内存归档；下一场开始时不再清掉）
-	path.archive_current(_track_meta(storm, rec))
+	# 1.3 ④：本局路径**一定保留** —— 把这场的视图轨迹收进主层历史归档，再释放视图
+	var view: PathLayer = storm_views.get(storm, null)
+	if view != null and is_instance_valid(view):
+		path.absorb_view(view, _track_meta(storm, rec))
+	storm_views.erase(storm)
+	_sfx_state.erase(storm.get_instance_id())
 	_play_event_sfx("disperse")          # 事件音效：消散 / 转温（没素材就静音）
-	active_storm = null
-	_stop_background_sfx()
-	# 冷却只在风季模式生效（非风季模式不显示也不需要等）
-	if season_mode:
-		next_deploy_day = SimClock.sim_days() + _rng.randf_range(Const.DEPLOY_COOLDOWN_MIN, Const.DEPLOY_COOLDOWN_MAX)
+	storms.erase(storm)
+	if selected_storm == storm:
+		selected_storm = storms[0] if not storms.is_empty() else null
+	if storms.is_empty():
+		_stop_background_sfx()
 	storm_finished.emit(rec)
 	state_changed.emit()
 
@@ -934,9 +1037,10 @@ func _on_landfall(storm: Storm) -> void:
 	# ⚠ 用户 2026-11-06：TD（22~33 kt）登陆**要有视觉特效**（无音效）。
 	#   内部 category 对 22~30 kt 仍算扰动，用 category 判会漏 → 直接按风速 ≥22 kt 判。
 	if storm.wind_kt >= 22.0:
-		path.spawn_landfall_effect(storm.current_world_position(), storm.wind_kt)
+		var view := _view_of(storm)
+		view.spawn_landfall_effect(storm.current_world_position(), storm.wind_kt)
 		_play_landfall_sfx(storm)
-	notice.emit("%s 登陆！" % storm.storm_name)
+	notice.emit("%s 登陆！" % storm.number_text())
 	state_changed.emit()
 
 
@@ -1099,30 +1203,52 @@ func toggle_pause() -> void:
 	state_changed.emit()
 
 
-## 「停止模拟」：消除当前台风，**且不消耗编号、名称与 ACE**。
+## 「停止模拟」：消除**选中的那一场**台风，且不消耗编号、名称与 ACE。
 ## 与 _finish_storm()（正常结束、会计入战报与 ACE）的区别就在这里。
-func cancel_storm() -> void:
-	if active_storm == null:
+## ⑤A-1 多台风：带参数；不传则停选中的那场。多台下**不回退编号/名称游标**
+##（否则可能撞到另一场正在用的编号/名字；只有"全场只剩它一场"时才保留旧行为）。
+func cancel_storm(storm: Storm = null) -> void:
+	if storm == null:
+		storm = focus_storm()
+	if storm == null or not storms.has(storm):
 		return
-	var storm := active_storm
-	# 回退编号游标：这次不消耗编号
-	if storm.storm_number > 0:
-		Game.storm_cursor = storm.storm_number
-	# 回退名称游标：这次不消耗名字
-	if storm.name_committed:
-		Game.rollback_storm_name()
-	active_storm = null
-	# 1.3 ④：点「停止模拟」也**保留半截路径**（需求：路径一定保留、不自动清空），
+	var was_only := storms.size() <= 1
+	# 只有单场时才回退游标：这次不消耗编号 / 名称（多台下回退会撞号，用户 2026-11-22 定）
+	if was_only:
+		if storm.storm_number > 0:
+			Game.storm_cursor = storm.storm_number
+		if storm.name_committed:
+			Game.rollback_storm_name()
+	# 1.3 ④：点「停止模拟」也**保留半截路径**（路径一定保留、不自动清空），
 	# 只把 completed 标成 false（这场没有计入编号/名称/ACE）。
-	path.archive_current(_track_meta(storm, null, false))
+	var view: PathLayer = storm_views.get(storm, null)
+	if view != null and is_instance_valid(view):
+		path.absorb_view(view, _track_meta(storm, null, false))
+	storm_views.erase(storm)
+	_sfx_state.erase(storm.get_instance_id())
+	best_track.discard_track(storm)     # 停止的台风不进最佳路径数据集（也不留悬挂记录）
+	storms.erase(storm)
+	if selected_storm == storm:
+		selected_storm = storms[0] if not storms.is_empty() else null
+	if storms.is_empty():
+		_stop_background_sfx()
 	notice.emit("已停止 %s（不计入编号 / 名称 / ACE）" % storm.number_text())
 	state_changed.emit()
 
 
-## 「停止模拟」：只消除当前台风（不计编号/名称/ACE），
+## 「停止模拟」：只消除选中的那场台风（不计编号/名称/ACE），
 ## **不暂停时间轴**——它和「暂停时间轴」是两件事。
 func stop_simulation() -> void:
-	cancel_storm()
+	cancel_storm(focus_storm())
+	state_changed.emit()
+
+
+## 「全部停止」：把当前所有活跃台风都按「停止模拟」处理（⑤A-1 多台模式新增）
+func stop_all_storms() -> void:
+	if storms.is_empty():
+		return
+	for s in storms.duplicate():
+		cancel_storm(s)
 	state_changed.emit()
 
 
@@ -1133,7 +1259,7 @@ func set_date(month: int, day: int) -> void:
 
 
 func can_deploy() -> bool:
-	return active_storm == null and not season_over
+	return storms.size() < Const.MAX_ACTIVE_STORMS and not season_over
 
 
 func cycle_wind_unit() -> void:
@@ -1152,9 +1278,13 @@ func status_title() -> String:
 		return "风季结束"
 	if paused:
 		return "已暂停"
-	if active_storm != null:
-		return "%s  %s" % [active_storm.number_text(), active_storm.name_label()]
-	return "待投放"
+	var n := storms.size()
+	if n == 0:
+		return "待投放"
+	var s := focus_storm()
+	if n > 1:
+		return "%d 场台风 · 选中 %s" % [n, s.number_text()]
+	return "%s  %s" % [s.number_text(), s.name_label()]
 
 
 func status_lines() -> PackedStringArray:
@@ -1165,16 +1295,20 @@ func status_lines() -> PackedStringArray:
 	out.append("流速：%s" % ("空闲加速" if SimClock.is_idle_speed() else "正常"))
 
 	# 冷却倒计时只在风季模式出现（并排放进同一行）
-	if _show_cooldown() and active_storm == null and not season_over:
+	if _show_cooldown() and storms.is_empty() and not season_over:
 		var cool_text := "还需 %.1f 天" % days_until_deploy() if on_deploy_cooldown() else "✓ 可投放"
 		out.append("投放冷却：%s" % cool_text)
 
+	# ⑤A-1 多台风：先给一行"进行中 N 场"，再显示选中那场的详情
+	if storms.size() > 1:
+		out.append("进行中：%d 场（右侧「选中台风」切换）" % storms.size())
+
 	# ── 台风信息：横向「标签：值」成对排布 ──
-	var s := active_storm
+	var s := focus_storm()
 	if s == null:
 		return out
 	out.append("")
-	out.append("── 当前台风 ──")
+	out.append("── 当前台风（选中）──")
 	out.append("编号：%s" % s.number_text())
 	out.append("名称：%s" % s.name_label())        # 未命名时这里是空的
 	out.append("中心：%s" % s.latlon_text())
@@ -1227,14 +1361,22 @@ func debug_text() -> String:
 	out.append("本局场次=%d  本局总ACE=%.2f" % [Game.records.size(), Game.total_ace])
 	out.append("冷却：剩余 %.1f 天（下个可投日=%.1f）  显示冷却=%s" % [
 		days_until_deploy(), next_deploy_day, _show_cooldown()])
+	out.append("活跃台风=%d / 上限 %d   选中=%s" % [
+		storms.size(), Const.MAX_ACTIVE_STORMS,
+		(focus_storm().number_text() if focus_storm() != null else "无")])
+	if storms.size() > 1:
+		var labels := PackedStringArray()
+		for st in storms:
+			labels.append(st.number_text())
+		out.append("全部活跃：%s" % " ".join(labels))
 
-	var s := active_storm
+	var s := focus_storm()
 	out.append("")
 	if s == null:
 		out.append("-- 当前台风：无 --")
 		out.append("可投放=%s  待用路径点=%d" % [can_deploy_now(), _pending_manual_waypoints.size()])
 	else:
-		out.append("-- 当前台风 --")
+		out.append("-- 当前台风（选中）--")
 		out.append("编号=%s  名称=%s  已命名=%s" % [s.number_text(), s.name_label(), s.name_committed])
 		out.append("Kt=%.2f  气压=%.1f  类型=%d(%s)" % [
 			s.wind_kt, s.central_pressure, s.category, s.category_text()])

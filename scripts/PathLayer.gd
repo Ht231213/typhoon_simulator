@@ -44,6 +44,10 @@ var phases := PackedInt32Array()
 ## 本局所有已结束/已停止台风的轨迹（旧 → 新）。
 ## 1.3 起每场台风结束**一定保留**，下一场开始时只清「当前轨迹」，不碰这里。
 var archive := TrackArchiveClass.new()
+## ⑤A-1 多台风：**每场活跃台风一个独立视图实例**。
+## 本层（场景里那个 %PathLayer）只负责「历史归档 + 投放点」；
+## 每个活跃台风的图标/风圈/当前轨迹由它自己的视图实例画（见 create_storm_view）。
+var live_views: Array = []
 ## 导出专用：忽略「显示台风路径」开关（导出和显示是两回事，用户 2026-11-22 定）
 var ignore_show_tracks := false
 ## 上次生效的「显示台风路径」开关（变了要重绘）
@@ -185,48 +189,72 @@ func _stop_icon_videos() -> void:
 	_video_fade = 0.0
 
 
-## 彻底清空（当前轨迹 + 历史归档）。
-## ⚠ 只给自检/标定脚本用；游戏里**不要**用它——1.3 起历史路径要一直保留，
-##   新一场开始请用 begin_new_track()。
+## 彻底清空（当前轨迹 + 历史归档 + 所有活跃图标视图）。
+## ⚠ 只给自检/标定脚本用；游戏里**不要**用它——1.3 起历史路径要一直保留。
 func clear_track() -> void:
-	begin_new_track()
+	points.clear()
+	intensities.clear()
+	phases.clear()
+	live_visible = false
+	landfall_effects.clear()
 	archive.clear()
+	for v in live_views:
+		if is_instance_valid(v):
+			v.queue_free()
+	live_views.clear()
 	queue_redraw()
 
 
-## 把「当前轨迹」收进历史归档，然后清空当前轨迹并收掉台风图标。
-## meta 字段见 TrackArchive.Track：label / peak_kt / ace / start_day / end_day / completed。
-func archive_current(meta: Dictionary = {}) -> void:
-	archive.add_track(points, intensities, phases, meta)
-	points.clear()
-	intensities.clear()
-	phases.clear()
-	live_visible = false
-	landfall_effects.clear()
+# ------------------------- ⑤A-1 多台风：视图管理 -------------------------
+
+## 新建一场台风的显示视图（独立 PathLayer 实例：自己的图标/风圈/当前轨迹）。
+## 挂到本层的同一父节点（MapLayer）下；树序在本层之后 → 画在历史路径上面。
+func create_storm_view() -> PathLayer:
+	var view := PathLayer.new()
+	view.name = "StormView"
+	get_parent().add_child(view)
+	live_views.append(view)
+	return view
+
+
+## 把某场台风的视图收进历史归档（复制轨迹 → archive），然后释放视图。
+func absorb_view(view: PathLayer, meta: Dictionary = {}) -> void:
+	if view == null or not is_instance_valid(view):
+		return
+	archive.add_track(view.points, view.intensities, view.phases, meta)
+	live_views.erase(view)
+	view.queue_free()
 	queue_redraw()
 
 
-## 新一场台风开始：**只清当前轨迹**，历史归档保留（1.3 ④：路径不再被下一场清掉）。
-func begin_new_track() -> void:
-	points.clear()
-	intensities.clear()
-	phases.clear()
-	live_visible = false
-	landfall_effects.clear()
-	queue_redraw()
+## 本局有没有任何可导出的路径（历史归档 / 本层当前 / 活跃台风视图）。
+## 暂停时「导出图片」按钮的显示条件（④ 的旧条件只查归档，多台后要连活跃轨迹一起查）。
+func has_visible_tracks() -> bool:
+	if not archive.is_empty():
+		return true
+	if points.size() >= 2:
+		return true
+	for v in live_views:
+		if is_instance_valid(v) and v.points.size() >= 2:
+			return true
+	return false
 
 
-## 本局有没有保留的历史路径（暂停菜单「导出」按钮的显示条件）
+## 本局有没有保留的历史路径
 func has_archived_tracks() -> bool:
 	return not archive.is_empty()
 
 
-## 导出用：历史归档 + 当前轨迹（当前轨迹够 2 点才算）。返回 TrackArchive.Track 列表。
+## 导出用：历史归档 + 本层当前轨迹 + **所有活跃台风视图的当前轨迹**。
+## 返回 TrackArchive.Track 列表。
 func export_tracks() -> Array:
 	var out: Array = []
 	out.append_array(archive.tracks)
 	if points.size() >= 2:
 		out.append(TrackArchiveClass.make_track(points, intensities, phases))
+	for v in live_views:
+		if is_instance_valid(v) and v.points.size() >= 2:
+			out.append(TrackArchiveClass.make_track(v.points, v.intensities, v.phases))
 	return out
 
 
