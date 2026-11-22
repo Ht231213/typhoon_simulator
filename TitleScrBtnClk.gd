@@ -8,6 +8,10 @@ extends Control
 @onready var board_button: Button = %ButtonBoard
 @onready var settings_button: Button = %ButtonSettings
 @onready var exit_button: Button = %ButtonExit
+## 背景图（2026-11-22 窗口尺寸可变：大窗口要放大铺满，不能露底）
+@onready var background: Sprite2D = get_node_or_null("Background") as Sprite2D
+## 1.2.0 设计稿（1280×720）上的原始 scale：窗口不比设计稿大时保持它，观感和 1.2.0 一致
+const BG_DESIGN_SCALE := 0.78161705
 ## 模拟设置（模式 / 风季），不是应用设置
 @onready var settings_panel: Control = %SettingsPanel
 ## 应用设置（视频 / 音频 / 模拟设置选项卡）。
@@ -73,6 +77,26 @@ func _ready() -> void:
 	app_settings.on_closed = _on_app_settings_closed
 	app_settings.visible = false
 	single_button.grab_focus()
+
+	# 背景图 cover：窗口尺寸下拉换成大窗口后，右侧/下方不能出现空底
+	get_viewport().size_changed.connect(_fit_background)
+	_fit_background()
+
+
+## 背景图按窗口做 cover 缩放：以设计稿的图片中心为锚点，保证四个边都铺满。
+## 窗口 ≤ 设计稿时保持原始 scale → 1280×720/1280×782 下观感与 1.2.0 完全一致。
+func _fit_background() -> void:
+	if background == null or background.texture == null:
+		return
+	var tex := background.texture.get_size()
+	if tex.x <= 0.0 or tex.y <= 0.0:
+		return
+	var win := get_viewport().get_visible_rect().size
+	var c := background.position
+	var need_x := maxf(2.0 * c.x / tex.x, 2.0 * (win.x - c.x) / tex.x)
+	var need_y := maxf(2.0 * c.y / tex.y, 2.0 * (win.y - c.y) / tex.y)
+	var s := maxf(maxf(need_x, need_y), BG_DESIGN_SCALE)
+	background.scale = Vector2(s, s)
 
 
 func _on_single_ty_pressed() -> void:

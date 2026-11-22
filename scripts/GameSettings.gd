@@ -69,6 +69,26 @@ var sfx_volume := 1.0
 ## 是否全屏
 var fullscreen := false
 
+# ------------------------- 窗口大小（2026-11-22 用户要求）-------------------------
+## 窗口化档位：宽高按「侧栏 370 + 按钮行 54 + 地图 1.25 比例」反算好
+##（地图宽 = 窗宽−370；地图高 = 地图宽×0.8；窗高 = 地图高+54）→ 地图区零黑边。
+## 最后一项「全屏」单独处理（不在这个表里）。
+const WINDOW_PRESETS: Array[Dictionary] = [
+	{"w": 1280, "h": 782, "label": "1280 × 782（最小）"},
+	{"w": 1390, "h": 870, "label": "1390 × 870"},
+	{"w": 1450, "h": 918, "label": "1450 × 918（地图 1:1）"},
+	{"w": 1550, "h": 998, "label": "1550 × 998（1080p 满高）"},
+	{"w": 1920, "h": 1294, "label": "1920 × 1294（2K）"},
+]
+## 「全屏」在选项列表里的下标（表尾）
+const WINDOW_FULLSCREEN_INDEX := 5
+## 启动自动选档的上限（默认最多到 1450×918；更大的档让玩家自己在设置里选）
+const WINDOW_AUTO_CAP_INDEX := 2
+## 窗口装饰（标题栏 + 边框）预留高度：判断屏幕放不放得下时用
+const WINDOW_DECORATION_HEIGHT := 40
+## 当前窗口大小档位；-1 = 还没保存过（启动时自动挑屏幕能放下的最大档）
+var window_size_index := -1
+
 # ------------------------- 模拟设置（1.1.0 新增）-------------------------
 # ⚠ 这些不是"玩家偏好"，而是**影响模拟结果的参数**。
 #   和 Const 里的出厂默认值分开存，因为玩家可以在「模拟设置」里改。
@@ -214,7 +234,79 @@ func _ensure_buses() -> void:
 func apply_all() -> void:
 	_apply_bus(BUS_MUSIC, music_volume)
 	_apply_bus(BUS_SFX, sfx_volume)
-	_apply_fullscreen(fullscreen)
+	# 窗口大小（含全屏）：第一帧之前套用保存的档位 / 自动选能放下的最大档
+	_apply_window_size_initial()
+	changed.emit()
+
+
+# ============================ 窗口大小（2026-11-22） ============================
+
+## 选项显示文字（设置页下拉用）
+static func window_size_label(index: int) -> String:
+	if index == WINDOW_FULLSCREEN_INDEX:
+		return "全屏"
+	if index >= 0 and index < WINDOW_PRESETS.size():
+		return str(WINDOW_PRESETS[index]["label"])
+	return "自动"
+
+
+## 当前屏幕放不放得下这个档（全屏只要求屏幕别太小）
+static func window_size_fits(index: int) -> bool:
+	var usable := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+	if usable.size.x <= 0 or usable.size.y <= 0:
+		return true                                    # 拿不到屏幕信息时不拦
+	if index == WINDOW_FULLSCREEN_INDEX:
+		return usable.size.x >= 800 and usable.size.y >= 600
+	if index < 0 or index >= WINDOW_PRESETS.size():
+		return false
+	var p: Dictionary = WINDOW_PRESETS[index]
+	return int(p["w"]) <= usable.size.x \
+		and int(p["h"]) + WINDOW_DECORATION_HEIGHT <= usable.size.y
+
+
+## 启动自动选档：从上限往下找第一个屏幕放得下的；全放不下就用最小档
+static func best_window_size_index() -> int:
+	for i in range(mini(WINDOW_AUTO_CAP_INDEX, WINDOW_PRESETS.size() - 1), -1, -1):
+		if window_size_fits(i):
+			return i
+	return 0
+
+
+## 启动时套用当前档位（保存过且仍放得下就沿用；否则重新自动选）
+func _apply_window_size_initial() -> void:
+	if window_size_index < 0 or not window_size_fits(window_size_index):
+		window_size_index = best_window_size_index()
+	_apply_window_preset(window_size_index)
+	_save()
+
+
+## 实际切换窗口：全屏走全屏模式；窗口化则设尺寸 + 居中
+func _apply_window_preset(index: int) -> void:
+	if index == WINDOW_FULLSCREEN_INDEX:
+		fullscreen = true
+		_apply_fullscreen(true)
+		return
+	if index < 0 or index >= WINDOW_PRESETS.size():
+		return
+	fullscreen = false
+	_apply_fullscreen(false)
+	var p: Dictionary = WINDOW_PRESETS[index]
+	var size := Vector2i(int(p["w"]), int(p["h"]))
+	DisplayServer.window_set_size(size)
+	# 居中到当前屏幕可用区（多显示器时用窗口所在屏幕）
+	var usable := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+	DisplayServer.window_set_position(usable.position + (usable.size - size) / 2)
+
+
+## 设置页「窗口大小」下拉：立刻生效 + 落盘（屏幕放不下的档退回自动最大档）
+func set_window_size_index(index: int) -> void:
+	if index < 0 or index > WINDOW_FULLSCREEN_INDEX:
+		return
+	if not window_size_fits(index):
+		index = best_window_size_index()
+	window_size_index = index
+	_apply_window_preset(index)
+	_save()
 	changed.emit()
 
 
@@ -293,6 +385,7 @@ func _save() -> void:
 	cfg.set_value("audio", "music_volume", music_volume)
 	cfg.set_value("audio", "sfx_volume", sfx_volume)
 	cfg.set_value("video", "fullscreen", fullscreen)
+	cfg.set_value("video", "window_size_index", window_size_index)
 	cfg.set_value("video", "icon_pack", icon_pack)
 	cfg.set_value("video", "tier_variants", tier_variants)
 	# 迁移标记（用户 2026-11-10）：写过一次之后不再强制关「等级扩展图标」
@@ -332,6 +425,8 @@ func _load() -> void:
 	music_volume = clampf(float(cfg.get_value("audio", "music_volume", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx_volume", sfx_volume)), 0.0, 1.0)
 	fullscreen = bool(cfg.get_value("video", "fullscreen", fullscreen))
+	window_size_index = clampi(
+		int(cfg.get_value("video", "window_size_index", -1)), -1, WINDOW_FULLSCREEN_INDEX)
 	# 方案包（2026-11-05）。老配置迁移：以前选的图标方案名是 default/smcy1_3，
 	# 对应现在的方案包文件名 → 优先沿用，找不到就留空（程序化渲染）。
 	var saved_pack := str(cfg.get_value("video", "icon_pack", ""))

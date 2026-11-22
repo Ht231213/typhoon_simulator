@@ -30,8 +30,11 @@ MusicManager="*res://scripts/MusicManager.gd"
 [display]
 
 window/size/viewport_width=1280
-window/size/viewport_height=880
-window/stretch/mode="canvas_items"
+window/size/viewport_height=782
+; 2026-11-22 窗口尺寸下拉：改为 disabled（窗口像素 = UI 像素）。
+; 换分辨率时侧栏/按钮/字号大小不变，只有地图区变大；
+; 若保留 canvas_items，换尺寸会整体缩放 + 留黑边，与「不同窗口看不同大小地图」冲突。
+window/stretch/mode="disabled"
 
 [gui]
 

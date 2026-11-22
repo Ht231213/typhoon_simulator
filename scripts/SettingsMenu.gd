@@ -16,7 +16,9 @@ extends Control
 @onready var tab_bar: TabBar = %TabBar
 @onready var pages: TabContainer = %Pages
 
-@onready var fullscreen_check: CheckBox = %FullscreenCheck
+## 视频页：窗口大小下拉（2026-11-22 用户要求；替代原来的「全屏显示」勾选框）
+@onready var window_size_option: OptionButton = %WindowSizeOption
+@onready var window_size_hint: Label = %WindowSizeHint
 
 @onready var music_slider: HSlider = %MusicSlider
 @onready var music_value: Label = %MusicValue
@@ -85,10 +87,58 @@ func _ready() -> void:
 		tab_bar.set_tab_title(i, pages.get_tab_title(i))
 	tab_bar.tab_changed.connect(_on_tab_changed)
 
-	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
+	_setup_window_sizes()
 	music_slider.value_changed.connect(_on_music_changed)
 	sfx_slider.value_changed.connect(_on_sfx_changed)
 	back_button.pressed.connect(close)
+
+
+# ============================ 视频页：窗口大小（2026-11-22） ============================
+
+## 下拉项 = GameSettings.WINDOW_PRESETS + 末尾「全屏」；当前屏幕放不下的档置灰
+func _setup_window_sizes() -> void:
+	window_size_option.clear()
+	for i in GameSettings.WINDOW_PRESETS.size():
+		window_size_option.add_item(GameSettings.window_size_label(i), i)
+	window_size_option.add_item(GameSettings.window_size_label(GameSettings.WINDOW_FULLSCREEN_INDEX),
+		GameSettings.WINDOW_FULLSCREEN_INDEX)
+	window_size_option.item_selected.connect(_on_window_size_selected)
+
+
+## 打开设置时：按当前档位选中；放不下的档置灰并写 tooltip
+func _refresh_window_size_option() -> void:
+	for i in window_size_option.item_count:
+		var idx: int = int(window_size_option.get_item_id(i))
+		var fits: bool = GameSettings.window_size_fits(idx)
+		window_size_option.set_item_disabled(i, not fits)
+		window_size_option.set_item_tooltip(i,
+			"" if fits else "当前屏幕放不下（可用区高度需 ≥ 窗口高 + 标题栏）")
+	var cur := GameSettings.window_size_index
+	if cur < 0:
+		cur = GameSettings.best_window_size_index()
+	# 玩家可能自己拖拽窗口改了大小：按**实际窗口尺寸**优先匹配档位，避免下拉显示过期
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN:
+		var win := DisplayServer.window_get_size()
+		for i in GameSettings.WINDOW_PRESETS.size():
+			var p: Dictionary = GameSettings.WINDOW_PRESETS[i]
+			if int(p["w"]) == win.x and int(p["h"]) == win.y:
+				cur = i
+				break
+	for i in window_size_option.item_count:
+		if int(window_size_option.get_item_id(i)) == cur:
+			window_size_option.select(i)
+			break
+	window_size_hint.text = "当前窗口：%d × %d px（选「全屏」可全屏；更大的档位需要更大的显示器）" % [
+		DisplayServer.window_get_size().x, DisplayServer.window_get_size().y]
+
+
+## 选中窗口大小：立刻生效 + 落盘（GameSettings 会处理屏幕放不下时退回最大可放档）
+func _on_window_size_selected(index: int) -> void:
+	if index < 0 or index >= window_size_option.item_count:
+		return
+	var idx: int = int(window_size_option.get_item_id(index))
+	GameSettings.set_window_size_index(idx)
+	_refresh_window_size_option()
 
 
 # ============================ 构建各页 ============================
@@ -473,7 +523,8 @@ func _on_sim_settings_changed() -> void:
 
 ## 打开设置界面：先把控件同步到当前设置值
 func open() -> void:
-	fullscreen_check.set_pressed_no_signal(GameSettings.fullscreen)
+	# 视频页：窗口大小下拉（每次打开按当前窗口重新判断哪些档位放得下）
+	_refresh_window_size_option()
 	music_slider.set_value_no_signal(GameSettings.music_volume * 100.0)
 	sfx_slider.set_value_no_signal(GameSettings.sfx_volume * 100.0)
 	_refresh_volume_labels()
@@ -509,15 +560,6 @@ func _refresh_volume_labels() -> void:
 
 # ============================ 各控件回调 ============================
 # 全部都「即时生效 + 立即保存」，所以没有确定/取消按钮，只有一个「返回」。
-
-func _on_fullscreen_toggled(value: bool) -> void:
-	var ok: bool = GameSettings.set_fullscreen(value)
-	# 没生效（编辑器内嵌窗口）→ 把勾选框拉回去，并说明原因，别让它显示成已开
-	fullscreen_check.set_pressed_no_signal(GameSettings.fullscreen)
-	# 只有真出错才给文字，成功时不留任何提示
-	hint_label.text = "" if ok else \
-		"当前环境不支持全屏——编辑器里请关掉「编辑器设置 → 运行 → 窗口 → 嵌入游戏窗口」，或运行导出的 exe"
-
 
 func _on_music_changed(value: float) -> void:
 	GameSettings.set_music_volume(value / 100.0)
