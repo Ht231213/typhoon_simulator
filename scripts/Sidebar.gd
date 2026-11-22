@@ -141,10 +141,13 @@ func _refresh_button_visibility() -> void:
 	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
 
-	# 「导出图片」（1.3 ④）：只在本局已有保留路径 + 模拟已暂停时出现。
-	# ⚠ 位置在「暂停模拟」按钮下面；ESC 暂停菜单不加（用户 2026-11-22 定）。
+	# 「导出图片」（1.3 ④）：**随时暂停随时导出**——有历史归档，或当前这场已经走出折线
+	# （第一场台风还没结束时暂停也要能导出那半截路径，用户 2026-11-22 定）。
+	# ⚠ 位置在「暂停模拟」按钮下面；ESC 暂停菜单不加。
+	# ⚠ 变量名是 path_layer（见文件头 @onready），不是 path。
 	export_button.visible = (not placing) and sim.paused and not over \
-		and path_layer != null and path_layer.has_archived_tracks()
+		and path_layer != null \
+		and (path_layer.has_archived_tracks() or path_layer.points.size() >= 2)
 
 
 func _on_storm_finished(_rec: Game.StormRecord) -> void:
