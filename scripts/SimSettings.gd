@@ -27,8 +27,6 @@ const HEADER_TITLE := "模拟设置"
 ## 标题栏的三角符号（展开 / 收起）。用文字符号而不是贴图，省素材。
 const HEADER_EXPANDED := "▼ %s"
 const HEADER_COLLAPSED := "▶ %s"
-## 默认导出目录的文件夹名，放在「游戏根」下（导出后就是 exe 旁边）
-const BEST_TRACK_DIR_NAME := "BestTrack"
 ## 行内字号。`.tscn` 里已经写了一遍，这里只用来补 SpinBox：
 ## ⚠ SpinBox 的数字是它**内部自己创建的 LineEdit** 画的，场景里的
 ##   `theme_override_font_sizes` 管不到，只能在代码里给那个 LineEdit 补一次，
@@ -43,8 +41,6 @@ const ROW_FONT_SIZE := 19
 @onready var mean_sst_spin: SpinBox = %MeanSstSpin
 @onready var seasonal_amp_spin: SpinBox = %SeasonalAmpSpin
 @onready var record_disturbances_check: CheckBox = %RecordDisturbancesCheck
-@onready var best_track_check: CheckBox = %BestTrackCheck
-@onready var best_track_format_option: OptionButton = %BestTrackFormatOption
 ## 「暂停时间轴」勾选框（2026-11-08）
 var pause_timeline_check: CheckBox = null
 ## 「显示台风路径」勾选框（1.3 ④，2026-11-22）
@@ -54,14 +50,6 @@ var show_tracks_check: CheckBox = null
 @onready var mode_label: Label = %ModeLabel
 @onready var mean_sst_label: Label = %MeanSstLabel
 @onready var seasonal_amp_label: Label = %SeasonalAmpLabel
-@onready var best_track_format_label: Label = %BestTrackFormatLabel
-
-## 「导出方式」下拉的显示文字。值（id）由 `GameSettings.BEST_TRACK_FORMATS` 决定，
-## 这里只放显示名，两边顺序必须一致（`_setup_best_track_format_options` 按格式值遍历）。
-const FORMAT_LABELS := {
-	"noaa": "NOAA（IBTrACS）",
-	"cma": "CMA（中国气象局）",
-}
 
 ## 当前权限上下文（进游戏前 / 进游戏后·非风季 / 进游戏后·风季）
 var _in_game := false
@@ -108,7 +96,6 @@ func _ready() -> void:
 			if box is PanelContainer:
 				(box as PanelContainer).add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_setup_mode_options()
-	_setup_best_track_format_options()
 	_apply_spin_fonts()
 	_connect_signals()
 	_ready_done = true
@@ -147,12 +134,12 @@ func _build_sections() -> void:
 	show_tracks_check.tooltip_text = "显示当前台风和历史台风的路径折线。只影响画面，不影响导出的图片。"
 	show_tracks_check.toggled.connect(_on_show_tracks_toggled)
 	content.add_child(show_tracks_check)
-	# 重排：模拟选项（模式/风季/记录扰动/最佳路径）→ 环境参数（海温/季节增幅/暂停时间轴）
+	# 重排：模拟选项（模式/风季/记录扰动/显示路径）→ 环境参数（海温/季节增幅/暂停时间轴）
+	# ⚠ 「最佳路径数据集」已按用户要求搬到设置的「导出」页（2026-11-22），这里不再有。
 	var order: Array[Node] = [
 		sec_a, content.get_node("ModeRow"), content.get_node("SeasonCheck"),
 		content.get_node("SepMid2"), record_disturbances_check,
 		show_tracks_check,
-		content.get_node("BestTrackGroup"),
 		sec_b, content.get_node("MeanSstRow"), content.get_node("SeasonalAmpRow"),
 		pause_timeline_check,
 	]
@@ -187,10 +174,10 @@ func setup(p_in_game: bool, p_season: bool) -> void:
 	set_context(_in_game, _season)
 
 
-## 用户 2026-10-31：下拉/数值框不占满整行，统一 200 px 宽（和最佳路径选择框一致）
+## 用户 2026-10-31：下拉/数值框不占满整行，统一 200 px 宽（和最佳路径的选择框一致）
 func _normalize_control_widths() -> void:
-	for ctrl in [mode_option, best_track_format_option, mean_sst_spin, seasonal_amp_spin,
-			record_disturbances_check, best_track_check]:
+	for ctrl in [mode_option, mean_sst_spin, seasonal_amp_spin,
+			record_disturbances_check]:
 		if ctrl == null:
 			continue
 		ctrl.custom_minimum_size = Vector2(200, ctrl.custom_minimum_size.y)
@@ -205,8 +192,10 @@ func _normalize_control_widths() -> void:
 ##   │                  │ 其余全部可改                                  │
 ##   │ 进游戏后·风季     │ 只锁「环境参数」区块：平均海温 / 季节海温增幅 /  │
 ##   │                  │ 暂停时间轴（调这些等于作弊）；                  │
-##   │                  │ 模拟选项（记录扰动 / 最佳路径 / 导出方式）可改   │
+##   │                  │ 模拟选项（记录扰动 / 显示路径）可改              │
 ##   └──────────────────┴──────────────────────────────────────────────┘
+## ⚠ 2026-11-22：「最佳路径数据集 / 导出方式」已搬到设置的「导出」页（SettingsMenu），
+##   本组件不再管它们。
 ## 用户 2026-11-10：非作弊项不能被风季模式锁住（之前是把除单位外全锁了）。
 func set_context(p_in_game: bool, p_season: bool) -> void:
 	_in_game = p_in_game
@@ -234,15 +223,12 @@ func set_context(p_in_game: bool, p_season: bool) -> void:
 	if pause_timeline_check != null:
 		_set_editable(pause_timeline_check, env_editable)
 
-	# ④ 模拟选项（非作弊项）：记录扰动 / 最佳路径 / 导出方式——**风季模式下也保持可改**。
-	#    （之前风季会强制勾上最佳路径再锁死；用户 2026-11-10 要求可以自己改。）
+	# ④ 模拟选项（非作弊项）：记录扰动 / 显示台风路径——**风季模式下也保持可改**。
+	#    （「最佳路径数据集」已搬到设置的「导出」页，本组件不再管它。）
 	_set_editable(record_disturbances_check, true)
-	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
-	_set_editable(best_track_check, true)
 	# 1.3 ④「显示台风路径」：非作弊项，风季模式下也保持可改
 	if show_tracks_check != null:
 		_set_editable(show_tracks_check, true)
-	_update_dir_row()
 
 
 ## 从存储重新读值到控件。不写回、不发 settings_changed。
@@ -265,41 +251,6 @@ func refresh_from_store() -> void:
 		show_tracks_check.set_pressed_no_signal(GameSettings.show_tracks)
 
 	record_disturbances_check.set_pressed_no_signal(GameSettings.record_disturbances)
-	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
-
-	# 导出方式：按值反查下标（不要假设存储里的格式一定在数组里——_load 有白名单，这里再兜一次）
-	var fmt_idx: int = GameSettings.BEST_TRACK_FORMATS.find(GameSettings.best_track_format)
-	best_track_format_option.select(maxi(fmt_idx, 0))
-
-	_update_dir_row()
-
-
-## 默认导出目录 = <游戏根>/BestTrack。
-## ⚠ 「游戏根」在两种运行方式下不是同一个地方：
-##   · 编辑器 / 直接跑工程：`res://` 就是工程根，可写
-##   · 导出成 exe：`res://` 在 PCK 里**只读**，必须写到 exe 所在目录
-##   `OS.has_feature("template")` 就是「我正在导出模板里跑」。
-func default_best_track_dir() -> String:
-	var base := ""
-	if OS.has_feature("template"):
-		base = OS.get_executable_path().get_base_dir()
-	else:
-		base = ProjectSettings.globalize_path("res://")
-	return base.path_join(BEST_TRACK_DIR_NAME)
-
-
-## 当前上下文是否「强制记录最佳路径」。
-## 用户 2026-11-10：风季模式不再强制记录（只锁环境参数，最佳路径可自己改）→ 永远 false。
-## 保留函数名以兼容旧调用。
-func is_best_track_forced() -> bool:
-	return false
-
-
-## 实际要不要记录最佳路径：玩家勾了 **或** 风季模式强制记录。
-## Lead 的记录逻辑请用这个，而不是直接读 GameSettings.best_track_enabled
-## （否则风季模式里会被「勾选框亮着但存储是 false」坑到）。
-func effective_best_track_enabled() -> bool:
-	return GameSettings.best_track_enabled or is_best_track_forced()
 
 
 # ============================ 构建 / 连接 ============================
@@ -319,16 +270,6 @@ func _setup_mode_options() -> void:
 ## 风速单位。选项直接从 TyphoonSim.WIND_UNITS 拿，别在这里另抄一份字符串，
 ## 否则以后加了单位两边会悄悄错位。
 
-## 导出方式下拉。顺序/允许值以 `GameSettings.BEST_TRACK_FORMATS` 为唯一真源，
-## item 的 id 就是数组下标（选中后按 `BEST_TRACK_FORMATS[index]` 换回字符串）。
-func _setup_best_track_format_options() -> void:
-	best_track_format_option.clear()
-	var idx := 0
-	for fmt in GameSettings.BEST_TRACK_FORMATS:
-		best_track_format_option.add_item(FORMAT_LABELS.get(fmt, fmt), idx)
-		idx += 1
-
-
 ## SpinBox 的字号要单独补，见 ROW_FONT_SIZE 的注释。
 func _apply_spin_fonts() -> void:
 	for spin in [mean_sst_spin, seasonal_amp_spin]:
@@ -343,8 +284,6 @@ func _connect_signals() -> void:
 	mean_sst_spin.value_changed.connect(_on_mean_sst_changed)
 	seasonal_amp_spin.value_changed.connect(_on_seasonal_amp_changed)
 	record_disturbances_check.toggled.connect(_on_record_disturbances_toggled)
-	best_track_check.toggled.connect(_on_best_track_toggled)
-	best_track_format_option.item_selected.connect(_on_best_track_format_selected)
 
 
 # ============================ 用户改动 ============================
@@ -384,24 +323,6 @@ func _on_record_disturbances_toggled(pressed: bool) -> void:
 	_persist()
 
 
-func _on_best_track_toggled(pressed: bool) -> void:
-	GameSettings.best_track_enabled = pressed
-	_update_dir_row()
-	_persist()
-
-
-## 导出方式：切格式**不清空已有轨迹**（采样与格式无关，一年只在年底写一次文件，
-## 所以整份文件必然用切换后的格式；跨年延后写的那种边角也用新格式，可接受）。
-func _on_best_track_format_selected(index: int) -> void:
-	var formats: Array[String] = GameSettings.BEST_TRACK_FORMATS
-	if index < 0 or index >= formats.size():
-		return
-	if GameSettings.best_track_format == formats[index]:
-		return
-	GameSettings.best_track_format = formats[index]
-	_persist()
-
-
 # ============================ 小工具 ============================
 
 ## 落盘 + 广播。见文件头「落盘」的说明。
@@ -409,14 +330,6 @@ func _on_best_track_format_selected(index: int) -> void:
 func _persist() -> void:
 	GameSettings.commit()
 	settings_changed.emit()
-
-
-## 导出方式 / 导出路径：只有勾了「最佳路径数据集」才可改。
-## 用户 2026-11-10：风季模式下也允许改（非作弊项），所以这里不再看 _in_game/_season。
-func _update_dir_row() -> void:
-	var on := best_track_check.button_pressed
-	_set_editable(best_track_format_option, on)
-	_dim_label(best_track_format_label, not on)
 
 
 ## 把控件设成可用 / 不可用。按基类分派，别逐类写死属性名。

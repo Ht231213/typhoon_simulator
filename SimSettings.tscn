@@ -1,17 +1,6 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/SimSettings.gd" id="1_sim"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_best"]
-content_margin_left = 16.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
-bg_color = Color(0.42, 0.62, 1, 0.1)
-border_width_left = 4
-border_color = Color(0.45, 0.72, 1, 0.75)
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
 
 [node name="SimSettings" type="VBoxContainer"]
 theme_override_constants/separation = 0
@@ -136,41 +125,4 @@ theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 19
 tooltip_text = "关：只有 ≥30 kt 才进台风列表。开：<30 kt 的热带扰动 / 热带低压也记进去。不影响 ACE 排行榜。"
 text = "记录热带扰动和低压"
-
-[node name="BestTrackGroup" type="PanelContainer" parent="Frame/FrameMargin/FrameRows/Content"]
-layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_best")
-
-[node name="BestTrackBox" type="VBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="BestTrackCheck" type="CheckBox" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
-layout_mode = 2
-theme_override_constants/icon_max_width = 34
-theme_override_font_sizes/font_size = 19
-tooltip_text = "把每场台风的路径点、强度、时间记录成数据集，用来和真实最佳路径做对比。"
-text = "最佳路径数据集"
-
-[node name="BestTrackFormatRow" type="HBoxContainer" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="BestTrackFormatLabel" type="Label" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackFormatRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(84, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "导出方式"
-
-[node name="BestTrackFormatOption" type="OptionButton" parent="Frame/FrameMargin/FrameRows/Content/BestTrackGroup/BestTrackBox/BestTrackFormatRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 40)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-tooltip_text = "导出的文件格式：NOAA 是 IBTrACS（国际通用），CMA 是中国气象局格式。两种格式共用同一份轨迹数据。"
-alignment = 1
 

@@ -2,7 +2,7 @@ extends Control
 ## 开始菜单。
 ##
 ## 保留原工程的布局（Sprite2D 背景 + 半透明遮罩 + 锚点定位的按钮），只做了加法：
-## 「模拟单台」改为打开模拟设置界面，「退出」保持退出，新增「ACE 存档」查看排行榜。
+## 「开始模拟」打开模拟设置面板，「退出」保持退出，「ACE 存档」查看排行榜。
 
 @onready var single_button: Button = %ButtonSingleTy
 @onready var board_button: Button = %ButtonBoard
@@ -58,6 +58,7 @@ func _ready() -> void:
 	app_settings.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	settings_panel.on_cancel = _on_settings_cancelled
+	settings_panel.settings_requested.connect(_on_cinematic_settings_requested)
 	settings_panel.visible = false
 	app_settings.on_closed = _on_app_settings_closed
 	app_settings.visible = false
@@ -72,8 +73,13 @@ func _on_settings_cancelled() -> void:
 	single_button.grab_focus()
 
 
-## 打开应用设置（视频 / 音频）
+## 打开应用设置（视频 / 音频 / 预设 / 模拟 / 导出）
 func _on_app_settings_pressed() -> void:
+	app_settings.open()
+
+
+## 电影模式下点「设置」：打开同一份应用设置（电影模式专属参数以后再做）
+func _on_cinematic_settings_requested() -> void:
 	app_settings.open()
 
 

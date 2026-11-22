@@ -1,6 +1,8 @@
 class_name TrackExporter
 extends RefCounted
-## 把「WPAC 地图 + 本局保留的全部台风路径」离屏合成一张 PNG（1.3 ④）。
+## 把「WPAC 地图 + 本局**已结束台风**的归档路径」离屏合成一张 PNG（1.3 ④）。
+## ⚠ 2026-11-22 用户要求：只导出**已经结束**的台风（archive 里的，正常结束 + 中途停止），
+##   正在跑的活跃台风不导出（PathLayer.export_tracks() 已只取归档）。
 ##
 ## 为什么用离屏 SubViewport：
 ##   · 截全窗口会带 UI；ESC 暂停时还会被 0.72 黑幕盖住；分辨率只有窗口大小
@@ -77,7 +79,7 @@ func export_png(host: Node, path_layer: PathLayer) -> String:
 	var file_name := "%s%s.png" % [FILE_PREFIX, stamp]
 
 	# ③ 桌面：写到 <游戏根>/导出图片/
-	var dir := _game_root().path_join(OUT_DIR_NAME)
+	var dir := out_dir()
 	var err_dir := DirAccess.make_dir_recursive_absolute(dir)
 	if err_dir != OK:
 		return "导出失败：无法创建目录 %s" % dir
@@ -90,7 +92,13 @@ func export_png(host: Node, path_layer: PathLayer) -> String:
 	if err != OK:
 		return "导出失败：写入出错（%d）%s" % [err, path]
 	print("[TrackExporter] 已导出图片 → %s（%d×%d）" % [path, img.get_width(), img.get_height()])
-	return "已导出图片：%s" % path
+	# 提示格式：已导出：<路径>（用户 2026-11-22 定的文案）
+	return "已导出：%s" % path
+
+
+## 图片导出目录：<游戏根>/导出图片（和 BestTrack/ 同级）
+static func out_dir() -> String:
+	return _game_root().path_join(OUT_DIR_NAME)
 
 
 ## 系统时间 YYYYmmdd_HHMMSS（文件名不重名）

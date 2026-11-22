@@ -75,6 +75,14 @@ theme_override_font_sizes/font_size = 22
 tooltip_text = "打开设置（视频 / 音频）"
 text = "设置"
 
+[node name="ExportButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+tooltip_text = "把地图 + 本局已结束台风的路径合并导出成 PNG（没有已结束的台风时禁用）"
+text = "导出图片"
+
 [node name="MenuButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)

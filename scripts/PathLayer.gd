@@ -253,17 +253,12 @@ func has_archived_tracks() -> bool:
 	return not archive.is_empty()
 
 
-## 导出用：历史归档 + 本层当前轨迹 + **所有活跃台风视图的当前轨迹**。
+## 导出用：**只取「已结束台风」的归档路径**（用户 2026-11-22 要求）。
+## ⚠ 正在跑的台风（活跃视图 / 本层当前轨迹）**不导出**；
+##   归档里 completed=true（正常结束）和 false（中途点停止）都算"已结束"，都导出。
 ## 返回 TrackArchive.Track 列表。
 func export_tracks() -> Array:
-	var out: Array = []
-	out.append_array(archive.tracks)
-	if points.size() >= 2:
-		out.append(TrackArchiveClass.make_track(points, intensities, phases))
-	for v in live_views:
-		if is_instance_valid(v) and v.points.size() >= 2:
-			out.append(TrackArchiveClass.make_track(v.points, v.intensities, v.phases))
-	return out
+	return archive.tracks.duplicate()
 
 
 ## 导出专用：把外部轨迹灌进来画。

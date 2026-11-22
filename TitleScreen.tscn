@@ -44,77 +44,41 @@ vertical_alignment = 1
 
 [node name="ButtonSingleTy" type="Button" parent="." unique_id=528605469]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.2591146
-anchor_top = 0.4537037
-anchor_right = 0.58984375
-anchor_bottom = 0.5462963
-offset_left = -222.5
-offset_top = -111.0
-offset_right = -222.5
-offset_bottom = -111.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
+layout_mode = 0
+offset_left = 110.0
+offset_top = 280.0
+offset_right = 530.0
+offset_bottom = 356.0
 theme_override_font_sizes/font_size = 32
-text = "模拟单台"
+text = "开始模拟"
 
 [node name="ButtonBoard" type="Button" parent="." unique_id=1041713173]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.2591146
-anchor_top = 0.5462963
-anchor_right = 0.58984375
-anchor_bottom = 0.6388889
-offset_left = -238.5
-offset_top = -103.0
-offset_right = -238.5
-offset_bottom = -103.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
+layout_mode = 0
+offset_left = 110.0
+offset_top = 372.0
+offset_right = 530.0
+offset_bottom = 448.0
 theme_override_font_sizes/font_size = 32
 text = "ACE 存档"
 
 [node name="ButtonExit" type="Button" parent="." unique_id=1893816805]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.2591146
-anchor_top = 0.5462963
-anchor_right = 0.58984375
-anchor_bottom = 0.6388889
-offset_left = -318.5
-offset_top = 126.00003
-offset_right = -318.5
-offset_bottom = 126.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
+layout_mode = 0
+offset_left = 110.0
+offset_top = 556.0
+offset_right = 530.0
+offset_bottom = 632.0
 theme_override_font_sizes/font_size = 32
 text = "退出"
 
 [node name="ButtonSettings" type="Button" parent="." unique_id=1567217171]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.2591146
-anchor_top = 0.5462963
-anchor_right = 0.58984375
-anchor_bottom = 0.6388889
-offset_left = -262.5
-offset_top = -27.99997
-offset_right = -262.5
-offset_bottom = -28.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
+layout_mode = 0
+offset_left = 110.0
+offset_top = 464.0
+offset_right = 530.0
+offset_bottom = 540.0
 theme_override_font_sizes/font_size = 32
 text = "设置"
 
@@ -190,7 +154,7 @@ theme_override_constants/separation = 14
 [node name="ModeLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=706571564]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
-text = "模拟模式"
+text = "游戏模式"
 
 [node name="ModeOption" type="OptionButton" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left/ModeRow" unique_id=271761793]
 unique_name_in_owner = true
@@ -198,6 +162,15 @@ custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 22
+
+[node name="AutoCheck" type="CheckBox" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_constants/icon_max_width = 64
+theme_override_font_sizes/font_size = 26
+tooltip_text = "勾选 = 自动模式：台风沿自动生成的路径移动；不勾 = 手动模式：自己在地图上画路径。"
+text = "自动模式"
 
 [node name="SeasonCheck" type="CheckBox" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Left" unique_id=1914594703]
 unique_name_in_owner = true
@@ -212,12 +185,26 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/margin_top = 8
 
-[node name="DescLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right" unique_id=1597845019]
+[node name="RightBox" type="VBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="DescLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right/RightBox" unique_id=1597845019]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "…"
 autowrap_mode = 2
+
+[node name="CinematicSettingsButton" type="Button" parent="SettingsPanel/Margin/Box/Pad/Rows/Columns/Right/RightBox"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+tooltip_text = "电影模式专属设置（电影模式开发中）"
+text = "设置"
 
 [node name="Buttons" type="HBoxContainer" parent="SettingsPanel/Margin/Box/Pad/Rows" unique_id=323294088]
 layout_mode = 2
@@ -237,6 +224,15 @@ custom_minimum_size = Vector2(180, 54)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "取消"
+
+[node name="HintLabel" type="Label" parent="SettingsPanel/Margin/Box/Pad/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.72, 0.35, 1)
+theme_override_font_sizes/font_size = 18
+text = ""
+autowrap_mode = 2
+horizontal_alignment = 1
 
 [node name="BoardPopup" type="AcceptDialog" parent="." unique_id=1350428423]
 unique_name_in_owner = true

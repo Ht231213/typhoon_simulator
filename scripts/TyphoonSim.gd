@@ -36,6 +36,9 @@ var storm_views: Dictionary = {}
 var selected_storm: Storm = null
 var paused := false
 var season_over := false
+## 本年度「正常结束」的台风场数（侧栏「本年完成 N 场」用）。
+## 跨年时清零；点「停止模拟」的不算。2026-11-22 新增。
+var _year_finished := 0
 ## 风速显示单位：0=kt 1=m/s 2=km/h。
 ## 实际存在 GameSettings 里（可以在「模拟设置」里改，并且会写盘持久化），
 ## 这里用属性转发，保证游戏内快捷键和设置界面改的是同一份值。
@@ -95,6 +98,7 @@ func _ready() -> void:
 		best_track.export_notice.connect(_on_best_track_notice)
 	Game.begin_session()
 	paused = false
+	_year_finished = 0
 	# 风季模式下让时钟停在 12月30日 不回绕，结算时才不会漏掉跨年那一拍
 	SimClock.clamp_at_year_end = season_mode
 	SimClock.begin()
@@ -595,9 +599,10 @@ func on_deploy_cooldown() -> bool:
 	return days_until_deploy() > 0.0
 
 
-## 是否允许投放：同屏未达上限、风季未结束、且不在冷却期（⑤A-1：不再要求"没有活跃台风"）
+## 是否允许投放：同屏未达上限（单台 1 / 多台 6）、风季未结束、且不在冷却期。
+## ⑤A-1：不再要求"没有活跃台风"；上限统一走 Game.max_active_storms()（2026-11-22）。
 func can_deploy_now() -> bool:
-	return storms.size() < Const.MAX_ACTIVE_STORMS and not season_over and not on_deploy_cooldown()
+	return storms.size() < Game.max_active_storms() and not season_over and not on_deploy_cooldown()
 
 
 ## 取当前该用的路径点：自动模式用内置固定路径，手动模式用玩家标好的
@@ -623,8 +628,10 @@ func _build_auto_waypoints() -> PackedVector2Array:
 ## 统一的投放入口。带冷却/上限检查，成功返回 true。
 ## ⑤A-1 多台风：已有台风时**也可以继续投放**（只要还没到 6 场上限）。
 func try_deploy() -> bool:
-	if storms.size() >= Const.MAX_ACTIVE_STORMS:
-		notice.emit("最多同时 %d 场台风，先停掉一场再投放" % Const.MAX_ACTIVE_STORMS)
+	var limit := Game.max_active_storms()
+	if storms.size() >= limit:
+		notice.emit(("单台模式只能有一场，切换多台模式请重新开始" if not Game.multi_mode \
+			else "最多同时 %d 场台风，先停掉一场再投放" % limit))
 		return false
 	if season_over:
 		notice.emit("风季已结束")
@@ -998,6 +1005,7 @@ func _finish_storm(storm: Storm) -> void:
 	var rec := storm.to_record()
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
+	_year_finished += 1                  # 本年度完成场数（侧栏用）
 	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
 	# 1.3 ④：本局路径**一定保留** —— 把这场的视图轨迹收进主层历史归档，再释放视图
 	var view: PathLayer = storm_views.get(storm, null)
@@ -1143,6 +1151,8 @@ func _on_year_completed() -> void:
 	# ⚠ 1.2.0：游戏内 UI 不提供路径选择（用户 2026-10-30 决定删掉），
 	#   目录来自 `config/simulation.cfg` 的 `[export] best_track_dir`（空 = 游戏根 BestTrack/）。
 	best_track.flush_year(Const.EXPORT_BEST_TRACK_DIR)
+	# 新年开始：本年完成场数清零（侧栏「本年完成 N 场」）
+	_year_finished = 0
 	if season_mode:
 		_end_season()
 
@@ -1259,7 +1269,7 @@ func set_date(month: int, day: int) -> void:
 
 
 func can_deploy() -> bool:
-	return storms.size() < Const.MAX_ACTIVE_STORMS and not season_over
+	return storms.size() < Game.max_active_storms() and not season_over
 
 
 func cycle_wind_unit() -> void:
@@ -1287,28 +1297,43 @@ func status_title() -> String:
 	return "%s  %s" % [s.number_text(), s.name_label()]
 
 
-func status_lines() -> PackedStringArray:
+## 侧栏「模拟状态」区（2026-11-22 新增）。
+## 和 status_lines() 分开：状态 / 日期 / 流速 / 时长 / 场次 / ACE / 海温在这里，
+## status_lines() 只留「台风参数」（选中那场）。
+func status_state_lines() -> PackedStringArray:
 	var out := PackedStringArray()
 	out.append("模式：%s" % Game.mode_label())
 	out.append("日期：%s" % SimClock.date_text())
-	out.append("进度：%s" % season_progress_text())
-	out.append("流速：%s" % ("空闲加速" if SimClock.is_idle_speed() else "正常"))
-
-	# 冷却倒计时只在风季模式出现（并排放进同一行）
+	out.append("流速：%s（%.1f 秒/天）" % [
+		"空闲加速" if SimClock.is_idle_speed() else "正常", SimClock.seconds_per_day()])
+	var state := "运行中"
+	if season_over:
+		state = "风季结束"
+	elif paused:
+		state = "已暂停"
+	if GameSettings.pause_timeline:
+		state += " · 暂停时间轴"
+	out.append("状态：%s" % state)
+	out.append("运行时长：%d 模拟日（第 %d 年）" % [SimClock.total_days, SimClock.year])
+	out.append("台风：本年完成 %d 场 · 进行中 %d 场（上限 %d）" % [
+		_year_finished, storms.size(), Game.max_active_storms()])
+	out.append("ACE：%.2f（本局）" % Game.total_ace)
+	out.append("风季：%s" % (("风季 · " + season_progress_text()) if season_mode else "非风季（无限）"))
+	out.append("海温：平均 %.1f℃ · 季节幅度 %.1f℃ · 当前增幅 %+.1f℃" % [
+		GameSettings.mean_sst, GameSettings.seasonal_amplitude, SimClock.seasonal_sst_amplitude()])
 	if _show_cooldown() and storms.is_empty() and not season_over:
 		var cool_text := "还需 %.1f 天" % days_until_deploy() if on_deploy_cooldown() else "✓ 可投放"
 		out.append("投放冷却：%s" % cool_text)
+	return out
 
-	# ⑤A-1 多台风：先给一行"进行中 N 场"，再显示选中那场的详情
-	if storms.size() > 1:
-		out.append("进行中：%d 场（右侧「选中台风」切换）" % storms.size())
 
-	# ── 台风信息：横向「标签：值」成对排布 ──
+## 台风参数（选中那场）。没有活跃台风时返回空数组（侧栏显示占位文字）。
+func status_lines() -> PackedStringArray:
 	var s := focus_storm()
 	if s == null:
-		return out
-	out.append("")
-	out.append("── 当前台风（选中）──")
+		return PackedStringArray()
+	var out := PackedStringArray()
+	out.append("── 选中台风 ──")
 	out.append("编号：%s" % s.number_text())
 	out.append("名称：%s" % s.name_label())        # 未命名时这里是空的
 	out.append("中心：%s" % s.latlon_text())
@@ -1362,7 +1387,7 @@ func debug_text() -> String:
 	out.append("冷却：剩余 %.1f 天（下个可投日=%.1f）  显示冷却=%s" % [
 		days_until_deploy(), next_deploy_day, _show_cooldown()])
 	out.append("活跃台风=%d / 上限 %d   选中=%s" % [
-		storms.size(), Const.MAX_ACTIVE_STORMS,
+		storms.size(), Game.max_active_storms(),
 		(focus_storm().number_text() if focus_storm() != null else "无")])
 	if storms.size() > 1:
 		var labels := PackedStringArray()

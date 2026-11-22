@@ -1,28 +1,30 @@
 extends PanelContainer
-## 右侧竖向控制栏。
+## 右侧信息栏 + 底部按钮行。
 ##
-## 按「手动/自动」×「风季/非风季」四种组合切换按钮组，规则来自你的规格：
+## 2026-11-22 布局重构后：
+##   · 侧栏（本节点）= 模拟状态 + 台风参数，**底部留空**（以后放新增按钮）
+##   · 按钮行在 `View/ButtonBar`（不属于本节点），但节点都是 `unique_name_in_owner`，
+##     跨树用 `%名字` 仍能解析，所以按钮逻辑继续集中在本脚本，避免再拆一个脚本。
 ##
-##   手动 · 非风季 | 添加(继续)  暂停  停止  调整日期
-##   自动 · 非风季 | 暂停  继续
-##   手动 · 风季   | 添加(继续)  暂停  调整日期
-##   自动 · 风季   | 暂停  继续
+## 按「手动/自动」×「风季/非风季」×「单台/多台」切换按钮状态，规则：
+##
+##   单台（默认） | 场上有 1 场台风时「添加台风」置灰（与 1.2.0 之前一致）
+##   多台         | 同屏最多 6 场，6 场时置灰并显示「已达上限 6 场」
+##   投放环节     | 只留 投放 / 撤销 / 清空 / 取消
 
 @onready var sim: TyphoonSim = %TyphoonSim
 @onready var path_editor: Control = %PathEditor
-@onready var path_layer: PathLayer = %PathLayer
-
-## 导出图片（1.3 ④）：离屏渲染在 TrackExporter 里做
-const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
 
 @onready var title_label: Label = %StatusTitle
-## 台风信息固定框里的文字（原来叫 StatusBody）
+## 「模拟状态」区的文字（日期 / 流速 / 状态 / 时长 / 场次 / ACE / 海温）
+@onready var sim_status_label: Label = %SimStatusLabel
+## 「台风参数」固定框里的文字（选中那场台风的详情）
 @onready var info_label: Label = %InfoLabel
+## 描述文字：放在按钮行最右侧（2026-11-22 从侧栏底部移过去）
 @onready var notice_label: Label = %NoticeLabel
 
 @onready var add_button: Button = %AddButton
 @onready var pause_button: Button = %PauseButton
-@onready var export_button: Button = %ExportButton
 @onready var stop_button: Button = %StopButton
 @onready var stop_all_button: Button = %StopAllButton
 @onready var date_button: Button = %DateButton
@@ -34,15 +36,6 @@ const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
 @onready var storm_select: OptionButton = %StormSelect
 ## 下拉列表的"签名"，只有台风数量/编号/名称变了才重建（避免每帧重建下拉框）
 var _storm_select_sig := ""
-## 「撤销 / 清空路径点」所在的行。这行始终保留固定高度，避免按钮显隐时侧栏跳动。
-@onready var path_buttons_row: HBoxContainer = %PlacementRow
-## 「取消」所在的行，同样预留高度
-@onready var cancel_row: HBoxContainer = %CancelRow
-## 台风信息固定框（固定高度，避免出现/消失时侧栏跳动）
-@onready var info_box: PanelContainer = %InfoBox
-
-const PATH_ROW_HEIGHT := 36.0
-const CANCEL_ROW_HEIGHT := 36.0
 
 @onready var date_dialog: AcceptDialog = %DateDialog
 @onready var month_spin: SpinBox = %MonthSpin
@@ -50,12 +43,11 @@ const CANCEL_ROW_HEIGHT := 36.0
 
 
 func _ready() -> void:
-	# 侧栏要在「暂停模拟」和「ESC 全暂停」两种情况下都能操作
+	# 侧栏/按钮行在「暂停模拟」和「ESC 全暂停」两种情况下都能操作
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	add_button.pressed.connect(_on_add_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
-	export_button.pressed.connect(_on_export_pressed)
 	stop_button.pressed.connect(_on_stop_pressed)
 	stop_all_button.pressed.connect(_on_stop_all_pressed)
 	date_button.pressed.connect(_on_date_pressed)
@@ -69,7 +61,7 @@ func _ready() -> void:
 	sim.state_changed.connect(refresh)
 	sim.storm_finished.connect(_on_storm_finished)
 	sim.notice.connect(_on_notice)
-	# 时钟每帧都发一次，保证台风信息和日期连续刷新，而不是一天跳一次
+	# 时钟每帧都发一次，保证模拟状态和台风信息连续刷新，而不是一天跳一次
 	SimClock.clock_ticked.connect(_on_clock_ticked)
 
 	path_editor.waypoints_changed.connect(_on_waypoints_changed)
@@ -80,18 +72,22 @@ func _ready() -> void:
 
 ## 每帧只刷新文字，不重建按钮状态（避免每帧做布局计算）
 func _on_clock_ticked() -> void:
-	title_label.text = sim.status_title()
-	info_label.text = "\n".join(sim.status_lines())
-	_refresh_storm_select()
+	_refresh_texts()
 
 
 # ============================ 刷新 ============================
 
 func refresh() -> void:
-	title_label.text = sim.status_title()
-	info_label.text = "\n".join(sim.status_lines())
-	_refresh_storm_select()
+	_refresh_texts()
 	_refresh_button_visibility()
+
+
+func _refresh_texts() -> void:
+	title_label.text = sim.status_title()
+	sim_status_label.text = "\n".join(sim.status_state_lines())
+	var storm_lines: PackedStringArray = sim.status_lines()
+	info_label.text = "\n".join(storm_lines) if not storm_lines.is_empty() else "（暂无活跃台风）"
+	_refresh_storm_select()
 
 
 ## ⑤A-1 多台风：「选中台风」下拉（只在 >1 场时显示）。
@@ -116,15 +112,16 @@ func _refresh_button_visibility() -> void:
 	var manual := not sim.auto_mode
 	var over := sim.season_over
 	var cooling := sim.on_deploy_cooldown()
-	var can := sim.can_deploy_now()
 	var has_points: bool = path_editor.waypoint_count() > 0
 	var placing: bool = path_editor.in_placement
 	var active_count := sim.storms.size()
+	var limit := Game.max_active_storms()
 
 	# ── 投放环节：进入后除「投放台风」「撤销路径点」「清空路径点」「取消」外全部隐藏 ──
 	if placing:
 		add_button.visible = true
 		add_button.text = "★ 投放台风"
+		add_button.disabled = not has_points      # 没标点就不能投放
 		undo_point_button.visible = has_points
 		clear_points_button.visible = has_points
 		cancel_button.visible = true
@@ -148,40 +145,37 @@ func _refresh_button_visibility() -> void:
 		stop_all_button.visible = manual and not sim.season_mode and active_count > 1
 		# 调整日期：仅手动 + 非风季（风季下算作弊）
 		date_button.visible = manual and not sim.season_mode
-		# 单位切换按钮已删除（1.2.0）：设置 → 模拟设置 → 单位设置 里已经有了
 
-	# 两行始终保留高度，避免按钮显隐时侧栏跳动
-	path_buttons_row.custom_minimum_size.y = PATH_ROW_HEIGHT
-	cancel_row.custom_minimum_size.y = CANCEL_ROW_HEIGHT
+		# 添加台风按钮：文字 + 可用性（用户 2026-11-22 要求：
+		#   单台模式照 1.2.0 之前 —— 场上有台风就置灰，不是点击后提示）
+		if over:
+			add_button.text = "风季已结束"
+			add_button.disabled = true
+		elif cooling:
+			add_button.text = "冷却中…"
+			add_button.disabled = true
+		elif sim.paused:
+			add_button.disabled = true
+			add_button.text = "＋ 添加台风"
+		elif not Game.multi_mode:
+			# 单台模式：同屏只能有 1 场
+			add_button.disabled = active_count >= 1
+			add_button.text = "＋ 添加台风（单台）" if add_button.disabled else "＋ 添加台风"
+		else:
+			# 多台模式：同屏最多 Const.MAX_ACTIVE_STORMS 场
+			add_button.disabled = active_count >= limit
+			add_button.text = ("已达上限 %d 场" % limit) if add_button.disabled else "＋ 添加台风"
 
-	# ⚠ 按钮图标只能用 Noto Sans SC 覆盖的符号（▶ ＋ ■ ★ …）。
-	#   原来那 4 个 emoji 图标（U+23F3 / U+1F300 / U+23F8 / U+1F4C5）字体里没有字形，
-	#   Windows 版靠系统字体兜底而正常，**网页版没有系统字体 → 会显示成方框**
-	#   （2026-10-24 BUG-2 收尾时去掉，只留文字）。
-	add_button.disabled = (not can and not placing) or (sim.paused and not placing)
-	if placing:
-		add_button.disabled = not has_points          # 没标点就不能投放
-	elif over:
-		add_button.text = "风季已结束"
-	elif cooling:
-		add_button.text = "冷却中…"
-	elif active_count >= Const.MAX_ACTIVE_STORMS:
-		add_button.text = "已达上限 %d 场" % Const.MAX_ACTIVE_STORMS
-		add_button.disabled = true
-	else:
-		add_button.text = "＋ 添加台风"
+		# 按钮提示文字：说清楚现在是什么模式、最多几场
+		add_button.tooltip_text = "进入投放环节。进入后在地图上左键标记路径点，再点本按钮投放台风。%s：同屏最多 %d 场。" % [
+			"多台模式" if Game.multi_mode else "单台模式", limit]
 
 	# 暂停按钮自己表述两种状态：没暂停时点它=暂停，已暂停时点它=继续
 	pause_button.disabled = over
 	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
 
-	# 「导出图片」（1.3 ④）：**随时暂停随时导出**——有历史归档，或当前已跑出的轨迹
-	# （⑤A-1 多台后，当前轨迹在各自的视图里，所以用 has_visible_tracks() 统一判断）。
-	# ⚠ 位置在「暂停模拟」按钮下面；ESC 暂停菜单不加。
-	# ⚠ 变量名是 path_layer（见文件头 @onready），不是 path。
-	export_button.visible = (not placing) and sim.paused and not over \
-		and path_layer != null and path_layer.has_visible_tracks()
+	# ⚠ 按钮图标只能用 Noto Sans SC 覆盖的符号（▶ ＋ ■ ★ …），不要用 emoji。
 
 
 func _on_storm_finished(_rec: Game.StormRecord) -> void:
@@ -208,6 +202,11 @@ func _on_add_pressed() -> void:
 		return
 
 	if not path_editor.in_placement:
+		# 兜底：按钮理论上已置灰，但防止其它入口（快捷键/测试脚本）绕过上限
+		if sim.storms.size() >= Game.max_active_storms():
+			_on_notice("单台模式只能有一场，切换多台模式请重新开始" if not Game.multi_mode \
+				else "最多同时 %d 场台风，先停掉一场再投放" % Game.max_active_storms())
+			return
 		path_editor.begin_placement()
 		_on_notice("投放环节：在地图上左键标记路径点，标完点「投放台风」")
 		refresh()
@@ -254,20 +253,6 @@ func _on_pause_pressed() -> void:
 	refresh()
 
 
-## 「导出图片」：把底图 + 本局保留的全部路径合并成一张 PNG（1.3 ④）。
-## 生成是异步的（要等离屏视口渲染一两帧），期间按钮临时禁用。
-func _on_export_pressed() -> void:
-	if export_button.disabled:
-		return
-	export_button.disabled = true
-	export_button.text = "导出中…"
-	var exporter: RefCounted = TrackExporterClass.new()
-	var msg: String = await exporter.export_png(self, path_layer)
-	export_button.disabled = false
-	export_button.text = "导出图片"
-	_on_notice("导出失败：本局还没有可导出的路径" if msg == "" else msg)
-
-
 func _on_stop_pressed() -> void:
 	sim.stop_simulation()
 	refresh()
@@ -294,4 +279,3 @@ func _on_date_pressed() -> void:
 func _on_date_confirmed() -> void:
 	sim.set_date(int(month_spin.value), int(day_spin.value))
 	refresh()
-
