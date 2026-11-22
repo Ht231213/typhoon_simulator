@@ -698,7 +698,8 @@ func _start_storm(waypoints: PackedVector2Array) -> void:
 	storm.start_latitude = storm.latitude
 	storm.northern = storm.latitude > 0.0
 	active_storm = storm
-	path.clear_track()
+	# 1.3 ④：只清「当前轨迹」，历史归档保留（原来 clear_track() 会把上一场也清掉）
+	path.begin_new_track()
 	path.set_live_position(waypoints[0], storm.wind_kt, storm.phase as int, storm.sst_here, storm.latitude, storm.subtype_st)
 	# 最佳路径：记录这个新诞生的台风（记录关闭时 begin_track 内部会直接返回）
 	best_track.begin_track(storm)
@@ -862,6 +863,29 @@ func _play_event_sfx(kind: String) -> void:
 	player.play()
 
 
+## 交给 PathLayer 归档用的轨迹元数据（1.3 ④）。
+## rec = 自然结束时的战报；点「停止模拟」没有 rec，用 storm 现场值 + completed=false。
+func _track_meta(storm: Storm, rec: Game.StormRecord = null, completed := true) -> Dictionary:
+	var label := storm.number_text()
+	var name_text := storm.name_label()
+	if name_text != "":
+		label += " " + name_text
+	var meta := {
+		"label": label,
+		"peak_kt": storm.peak_wind_kt,
+		"ace": storm.ace,
+		"start_day": storm.start_sim_day,
+		"end_day": SimClock.sim_days(),
+		"completed": completed,
+	}
+	if rec != null:
+		meta["peak_kt"] = rec.peak_wind_kt
+		meta["ace"] = rec.ace
+		meta["start_day"] = rec.start_day
+		meta["end_day"] = rec.end_day
+	return meta
+
+
 ## 台风「正常结束」（走完路径 / 减弱消散）。按 {1} 的规定：
 ##   ① 台风总计数 +1（与编号系统分开管理）
 ##   ② 它的 ACE 计入全年总 ACE
@@ -876,11 +900,11 @@ func _finish_storm() -> void:
 	Game.add_record(rec)                 # ② 累加 total_ace + ③ 存入列表（add_record 内部做）
 	Game.storm_total += 1                # ① 台风总计数
 	best_track.end_track(storm)          # 最佳路径：归档这条轨迹
+	# 1.3 ④：本局路径**一定保留**（收进 PathLayer 的内存归档；下一场开始时不再清掉）
+	path.archive_current(_track_meta(storm, rec))
 	_play_event_sfx("disperse")          # 事件音效：消散 / 转温（没素材就静音）
 	active_storm = null
 	_stop_background_sfx()
-	path.live_visible = false
-	path.queue_redraw()
 	# 冷却只在风季模式生效（非风季模式不显示也不需要等）
 	if season_mode:
 		next_deploy_day = SimClock.sim_days() + _rng.randf_range(Const.DEPLOY_COOLDOWN_MIN, Const.DEPLOY_COOLDOWN_MAX)
@@ -1088,8 +1112,9 @@ func cancel_storm() -> void:
 	if storm.name_committed:
 		Game.rollback_storm_name()
 	active_storm = null
-	path.live_visible = false
-	path.clear_track()
+	# 1.3 ④：点「停止模拟」也**保留半截路径**（需求：路径一定保留、不自动清空），
+	# 只把 completed 标成 false（这场没有计入编号/名称/ACE）。
+	path.archive_current(_track_meta(storm, null, false))
 	notice.emit("已停止 %s（不计入编号 / 名称 / ACE）" % storm.number_text())
 	state_changed.emit()
 

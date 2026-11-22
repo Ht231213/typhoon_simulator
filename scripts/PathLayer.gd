@@ -13,6 +13,7 @@ extends Node2D
 ## 坐标：世界坐标（地图像素，原点在左上角）。
 
 const IconPacksLoader := preload("res://scripts/IconPacks.gd")
+const TrackArchiveClass := preload("res://scripts/TrackArchive.gd")
 const VIDEO_SHADER := preload("res://assets/shaders/video_unpremultiply.gdshader")
 
 ## 图标世界直径的**兜底值**（像素）。用户会手动改这个数。
@@ -32,11 +33,21 @@ const VIDEO_PHASE_SECONDS := 5.0
 ## 消散淡出时长
 const ICON_FADE_SECONDS := 1.5
 
-# ------------------------- 已走过的路径 -------------------------
-var points: Array[Vector2] = []
-var intensities: Array[float] = []
+# ------------------------- 当前这场台风的轨迹 -------------------------
+## 用 Packed 数组（1.3 ④）：归档/导出要和 TrackArchive.Track 同一套类型，复制零成本。
+var points := PackedVector2Array()
+var intensities := PackedFloat32Array()
 ## 每个路径点对应的变性阶段（Storm.Phase 的整数值），用来把变性后的那一段画成白色虚线
-var phases: Array[int] = []
+var phases := PackedInt32Array()
+
+# ------------------------- 历史路径（1.3 ④，本局保留、不落盘）-------------------------
+## 本局所有已结束/已停止台风的轨迹（旧 → 新）。
+## 1.3 起每场台风结束**一定保留**，下一场开始时只清「当前轨迹」，不碰这里。
+var archive := TrackArchiveClass.new()
+## 导出专用：忽略「显示台风路径」开关（导出和显示是两回事，用户 2026-11-22 定）
+var ignore_show_tracks := false
+## 上次生效的「显示台风路径」开关（变了要重绘）
+var _show_tracks_cache := true
 
 # ------------------------- 台风当前位置 -------------------------
 var live_position := Vector2.ZERO
@@ -102,6 +113,7 @@ var landfall_effects: Array[Dictionary] = []
 func _ready() -> void:
 	icon_pack = GameSettings.icon_pack
 	_tier_variants_cache = GameSettings.tier_variants
+	_show_tracks_cache = GameSettings.show_tracks
 	icon_diameter = ICON_DIAMETER_FALLBACK
 	# 播放器都在图标之前创建：z 相同（1）时按树序绘制 → 特效在图标下面、底图上面
 	_landfall_video = _make_video("LandfallEffectVideo")
@@ -147,6 +159,10 @@ func _make_video(node_name: String) -> VideoStreamPlayer:
 func _on_settings_changed() -> void:
 	var variants_changed := GameSettings.tier_variants != _tier_variants_cache
 	_tier_variants_cache = GameSettings.tier_variants
+	# 「显示台风路径」开关：只影响重绘，不需要重建图标（1.3 ④）
+	if GameSettings.show_tracks != _show_tracks_cache:
+		_show_tracks_cache = GameSettings.show_tracks
+		queue_redraw()
 	if GameSettings.icon_pack == icon_pack and not variants_changed:
 		return
 	icon_pack = GameSettings.icon_pack
@@ -169,12 +185,62 @@ func _stop_icon_videos() -> void:
 	_video_fade = 0.0
 
 
+## 彻底清空（当前轨迹 + 历史归档）。
+## ⚠ 只给自检/标定脚本用；游戏里**不要**用它——1.3 起历史路径要一直保留，
+##   新一场开始请用 begin_new_track()。
 func clear_track() -> void:
+	begin_new_track()
+	archive.clear()
+	queue_redraw()
+
+
+## 把「当前轨迹」收进历史归档，然后清空当前轨迹并收掉台风图标。
+## meta 字段见 TrackArchive.Track：label / peak_kt / ace / start_day / end_day / completed。
+func archive_current(meta: Dictionary = {}) -> void:
+	archive.add_track(points, intensities, phases, meta)
 	points.clear()
 	intensities.clear()
 	phases.clear()
 	live_visible = false
 	landfall_effects.clear()
+	queue_redraw()
+
+
+## 新一场台风开始：**只清当前轨迹**，历史归档保留（1.3 ④：路径不再被下一场清掉）。
+func begin_new_track() -> void:
+	points.clear()
+	intensities.clear()
+	phases.clear()
+	live_visible = false
+	landfall_effects.clear()
+	queue_redraw()
+
+
+## 本局有没有保留的历史路径（暂停菜单「导出」按钮的显示条件）
+func has_archived_tracks() -> bool:
+	return not archive.is_empty()
+
+
+## 导出用：历史归档 + 当前轨迹（当前轨迹够 2 点才算）。返回 TrackArchive.Track 列表。
+func export_tracks() -> Array:
+	var out: Array = []
+	out.append_array(archive.tracks)
+	if points.size() >= 2:
+		out.append(TrackArchiveClass.make_track(points, intensities, phases))
+	return out
+
+
+## 导出专用：把外部轨迹灌进来画。
+## ⚠ 不能调 set_live_position()（那会生成台风图标/风圈，把图弄脏），只填数据。
+func set_export_data(tracks: Array) -> void:
+	archive.tracks = tracks
+	points.clear()
+	intensities.clear()
+	phases.clear()
+	pending_waypoints.clear()
+	landfall_effects.clear()
+	live_visible = false
+	ignore_show_tracks = true
 	queue_redraw()
 
 
@@ -189,8 +255,8 @@ func set_live_position(world_pos: Vector2, kt: float, phase := 0, sst := -1.0, l
 	_update_icon()
 	# 拉开足够距离才记录，避免高频调用堆出上万个点。
 	# 阶段变化时要强制记一个点，否则虚线段起点会不准。
-	var phase_changed := not phases.is_empty() and phases[-1] != phase
-	if points.is_empty() or phase_changed or points[-1].distance_to(world_pos) > 6.0:
+	var phase_changed := not phases.is_empty() and phases[phases.size() - 1] != phase
+	if points.is_empty() or phase_changed or points[points.size() - 1].distance_to(world_pos) > 6.0:
 		points.append(world_pos)
 		intensities.append(kt)
 		phases.append(phase)
@@ -708,8 +774,9 @@ func play_effect_video(kind: String, world_pos: Vector2) -> void:
 
 # ------------------------- 绘制 -------------------------
 
-## 路径点圆点半径
-const POINT_RADIUS := 7.0
+## 路径点圆点半径（世界像素）。
+## 1.3 ④ 用户 2026-11-22：7 → 3.5（原直径 14 px 太大，嫌「雷霆大路径点」）。
+const POINT_RADIUS := 3.5
 const POINT_COLOR := Color(1.0, 0.85, 0.1)
 const POINT_OUTLINE := Color(0.15, 0.10, 0.0, 0.9)
 ## 路径线宽
@@ -725,7 +792,12 @@ const TRANSITION_COLOR := Color(0.82, 0.88, 1.0, 0.95)
 
 
 func _draw() -> void:
-	_draw_track()
+	# ① 路径折线：「显示台风路径」关掉时**当前 + 历史一起隐藏**（用户 2026-11-22 定）。
+	#    投放环节的待投放路径点不算「台风路径」，照旧画（不然没法标点）。
+	#    ignore_show_tracks：导出用的离屏实例永远画（导出和显示是两回事）。
+	if ignore_show_tracks or GameSettings.show_tracks:
+		_draw_archive()
+		_draw_track()
 
 	# ② 手动模式：待投放的路径点
 	if not pending_waypoints.is_empty():
@@ -734,7 +806,7 @@ func _draw() -> void:
 				draw_dashed_line(pending_waypoints[i - 1], pending_waypoints[i],
 					Color(1.0, 0.95, 0.4, 0.7), 2.0, 8.0)
 		for p in pending_waypoints:
-			draw_circle(p, POINT_RADIUS + 1.5, POINT_OUTLINE)
+			draw_circle(p, POINT_RADIUS + 1.0, POINT_OUTLINE)
 			draw_circle(p, POINT_RADIUS, POINT_COLOR)
 
 	# ③ 风圈 + 程序化兜底图标
@@ -793,48 +865,65 @@ func _procedural_label() -> String:
 	return Const.category_short(Const.category_from_wind(live_intensity))
 
 
-## 已走过的路径：按变性阶段分段
+## 历史路径（旧 → 新）：每条都用和当前轨迹**完全一样**的画法/配色。
+## ⚠ 性能：归档轨迹的平滑曲线/取色结果缓存在 Track.render_cache 里，这里只画缓存。
+##   （否则当前轨迹每 tick 重绘时，会把所有历史轨迹重新平滑+取色一遍；
+##     几十场之后每帧都在做 O(点数²) 的最近点搜索，会明显掉帧。）
+func _draw_archive() -> void:
+	for t in archive.tracks:
+		if t.render_cache.is_empty() and t.points.size() >= 2:
+			t.render_cache = _build_track_commands(t.points, t.intensities, t.phases)
+		_draw_track_commands(t.render_cache)
+
+
+## 当前轨迹（每 tick 都在长，实时构建绘制指令）
 func _draw_track() -> void:
-	if points.size() < 2:
-		return
+	_draw_track_commands(_build_track_commands(points, intensities, phases))
+
+
+## 构建一条轨迹的绘制指令：
+##   按变性阶段分段 → 二次贝塞尔平滑 → 离散取色 → 切成「同色段」。
+## 返回 Array[Dictionary]：{pts: PackedVector2Array, cols: PackedColorArray, dashed: bool}
+## pts/kts/phs 既可以是当前轨迹，也可以是归档轨迹（TrackArchive.Track）。
+func _build_track_commands(pts: PackedVector2Array, kts: PackedFloat32Array,
+		phs: PackedInt32Array) -> Array:
+	var cmds: Array = []
+	if pts.size() < 2:
+		return cmds
 	var i := 1
-	while i < points.size():
-		var phase := phases[i] if i < phases.size() else 0
-		var kt_i := intensities[i] if i < intensities.size() else 0.0
+	while i < pts.size():
+		var phase: int = phs[i] if i < phs.size() else 0
+		var kt_i: float = kts[i] if i < kts.size() else 0.0
 		var dashed_i := _is_dashed(phase, kt_i)
 		var j := i
-		while j + 1 < points.size():
-			var ph2 := phases[j + 1] if j + 1 < phases.size() else 0
-			var kt2 := intensities[j + 1] if j + 1 < intensities.size() else 0.0
+		while j + 1 < pts.size():
+			var ph2: int = phs[j + 1] if j + 1 < phs.size() else 0
+			var kt2: float = kts[j + 1] if j + 1 < kts.size() else 0.0
 			if ph2 != phase or _is_dashed(ph2, kt2) != dashed_i:
 				break
 			j += 1
 		# 相邻点去重 + 跳过零长度段（用户 2026-11-08 的「尖刺」问题）
 		var run := PackedVector2Array()
 		var run_cols := PackedColorArray()
-		var prev := points[i - 1]
+		var prev := pts[i - 1]
 		run.append(prev)
-		run_cols.append(_track_color_at(intensities[i - 1] if i - 1 < intensities.size() else 0.0, phase))
+		run_cols.append(_track_color_at(kts[i - 1] if i - 1 < kts.size() else 0.0, phase))
 		for k in range(i, j + 1):
-			var pt: Vector2 = points[k]
+			var pt: Vector2 = pts[k]
 			if pt.distance_to(prev) < 0.5:
 				continue
 			run.append(pt)
-			run_cols.append(_track_color_at(intensities[k] if k < intensities.size() else 0.0, phase))
+			run_cols.append(_track_color_at(kts[k] if k < kts.size() else 0.0, phase))
 			prev = pt
 		if run.size() < 2:
 			i = j + 1
 			continue
-		# 平滑曲线（单调三次插值，过原始点且不过冲）
+		# 平滑曲线（二次贝塞尔穿中点，过原始点且不过冲）
 		var smooth := _smooth_polyline(run)
 		# 颜色：**离散**取色，不做任何 lerp（用户 2026-11-08）
-		# 每个采样点取最近原始点的颜色，然后把曲线按「同色」切成若干段分别画，
-		# 段间硬切换；相邻段重叠 1 个点避免断口。
-		var nseg := run.size() - 1
+		# 每个采样点取「离它最近的原始路径点」的颜色，然后把曲线按同色切成若干段。
 		var cols := PackedColorArray()
 		for k in smooth.size():
-			# 颜色：取**离该采样点最近的原始路径点**的颜色。
-			# （贝塞尔段和原始段不是一一对应，参数映射容易差半段；最近点最稳，用户 2026-11-08）
 			var q := smooth[k]
 			var best := 0
 			var best_d := 1e18
@@ -848,13 +937,39 @@ func _draw_track() -> void:
 		for k in range(1, smooth.size()):
 			if cols[k] != cols[k - 1]:
 				# ⚠ seg_start 必须推进到 **k**（不是 k-1）：
-				#   _draw_color_run 用 cols[from_i] 当整段颜色，若从 k-1 开始，
 				#   新色段会沿用上一段的旧颜色（EX 灰→黄整段变灰的根因）。
 				#   旧色段画到 k（重叠 1 个采样点防断口），新色段从 k 开始。
-				_draw_color_run(smooth, cols, seg_start, k, dashed_i)
+				_append_track_command(cmds, smooth, cols, seg_start, k, dashed_i)
 				seg_start = k
-		_draw_color_run(smooth, cols, seg_start, smooth.size() - 1, dashed_i)
+		_append_track_command(cmds, smooth, cols, seg_start, smooth.size() - 1, dashed_i)
 		i = j + 1
+	return cmds
+
+
+## 把「同色的一段曲线」做成一条绘制指令（solid 或 dashed）
+func _append_track_command(cmds: Array, smooth: PackedVector2Array, cols: PackedColorArray,
+		from_i: int, to_i: int, dashed: bool) -> void:
+	if to_i <= from_i:
+		return
+	var sub := PackedVector2Array()
+	for k in range(from_i, to_i + 1):
+		sub.append(smooth[k])
+	var color: Color = cols[clampi(from_i, 0, cols.size() - 1)]
+	var sub_cols := PackedColorArray()
+	for k in sub.size():
+		sub_cols.append(color)
+	cmds.append({"pts": sub, "cols": sub_cols, "dashed": dashed})
+
+
+## 画一条轨迹的全部绘制指令
+func _draw_track_commands(cmds: Array) -> void:
+	for c in cmds:
+		var sub: PackedVector2Array = c["pts"]
+		var sub_cols: PackedColorArray = c["cols"]
+		if bool(c["dashed"]):
+			_draw_dashed_polyline(sub, sub_cols)
+		else:
+			draw_polyline_colors(sub, sub_cols, TRACK_WIDTH, true)
 
 
 ## 曲线细分数（每两个原始点之间采样的段数）
@@ -898,24 +1013,6 @@ func _append_quad(out: PackedVector2Array, a: Vector2, b: Vector2, c: Vector2,
 		var p := a.lerp(b, t).lerp(b.lerp(c, t), t)
 		out.append(p)
 		_smooth_params.append(lerpf(param0, param1, t))
-
-
-## 画同色的一段曲线（solid 或 dashed，颜色取该段第一个点）
-func _draw_color_run(smooth: PackedVector2Array, cols: PackedColorArray,
-		from_i: int, to_i: int, dashed: bool) -> void:
-	if to_i <= from_i:
-		return
-	var color: Color = cols[clampi(from_i, 0, cols.size() - 1)]
-	var sub := PackedVector2Array()
-	for k in range(from_i, to_i + 1):
-		sub.append(smooth[k])
-	var sub_cols := PackedColorArray()
-	for k in sub.size():
-		sub_cols.append(color)
-	if dashed:
-		_draw_dashed_polyline(sub, sub_cols)
-	else:
-		draw_polyline_colors(sub, sub_cols, TRACK_WIDTH, true)
 
 
 ## 沿平滑折线画虚线（按弧长切段；draw_dashed_line 只能画直线）

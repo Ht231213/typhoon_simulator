@@ -102,6 +102,9 @@ var tier_variants := false
 ## 暂停时间轴（2026-11-08）：日期/月份不推进、季节海温冻结；台风照常运行。
 ## ⚠ 放在「环境参数」里算作弊项：冻结季节变化会改变难度。
 var pause_timeline := false
+## 是否在游戏里显示台风路径折线（当前 + 历史）。1.3 ④ 新增，默认开。
+## 只影响画面显示；**导出图片始终包含全部路径**（导出和显示是两回事，用户 2026-11-22 定）。
+var show_tracks := true
 ## 当前选中的方案包名（= `assets/icons/<名字>.zip` 的文件名，不含扩展名）。
 ## "" = 不用方案包（全部程序化渲染）。
 var icon_pack := DEFAULT_PACK
@@ -127,6 +130,15 @@ func set_pause_timeline(enabled: bool) -> void:
 	if enabled == pause_timeline:
 		return
 	pause_timeline = enabled
+	_save()
+	changed.emit()
+
+
+## 「显示台风路径」开关（1.3 ④）。只影响画面，不影响导出。
+func set_show_tracks(enabled: bool) -> void:
+	if enabled == show_tracks:
+		return
+	show_tracks = enabled
 	_save()
 	changed.emit()
 
@@ -286,6 +298,7 @@ func _save() -> void:
 	# 迁移标记（用户 2026-11-10）：写过一次之后不再强制关「等级扩展图标」
 	cfg.set_value("video", "tier_variants_migrated_v120", true)
 	cfg.set_value("sim", "pause_timeline", pause_timeline)
+	cfg.set_value("sim", "show_tracks", show_tracks)
 	# 模拟设置
 	cfg.set_value("sim", "mean_sst", mean_sst)
 	cfg.set_value("sim", "seasonal_amplitude", seasonal_amplitude)
@@ -337,6 +350,7 @@ func _load() -> void:
 	if not bool(cfg.get_value("video", "tier_variants_migrated_v120", false)):
 		tier_variants = false
 	pause_timeline = bool(cfg.get_value("sim", "pause_timeline", pause_timeline))
+	show_tracks = bool(cfg.get_value("sim", "show_tracks", show_tracks))
 	# 模拟设置（夹到界面允许的范围，防止手改配置文件搞出离谱值）
 	mean_sst = clampf(float(cfg.get_value("sim", "mean_sst", mean_sst)), 20.0, 100.0)
 	seasonal_amplitude = clampf(

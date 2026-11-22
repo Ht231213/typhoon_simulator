@@ -10,6 +10,10 @@ extends PanelContainer
 
 @onready var sim: TyphoonSim = %TyphoonSim
 @onready var path_editor: Control = %PathEditor
+@onready var path_layer: PathLayer = %PathLayer
+
+## 导出图片（1.3 ④）：离屏渲染在 TrackExporter 里做
+const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
 
 @onready var title_label: Label = %StatusTitle
 ## 台风信息固定框里的文字（原来叫 StatusBody）
@@ -18,6 +22,7 @@ extends PanelContainer
 
 @onready var add_button: Button = %AddButton
 @onready var pause_button: Button = %PauseButton
+@onready var export_button: Button = %ExportButton
 @onready var stop_button: Button = %StopButton
 @onready var date_button: Button = %DateButton
 @onready var clear_points_button: Button = %ClearPointsButton
@@ -44,6 +49,7 @@ func _ready() -> void:
 
 	add_button.pressed.connect(_on_add_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
+	export_button.pressed.connect(_on_export_pressed)
 	stop_button.pressed.connect(_on_stop_pressed)
 	date_button.pressed.connect(_on_date_pressed)
 	clear_points_button.pressed.connect(_on_clear_points_pressed)
@@ -135,6 +141,11 @@ func _refresh_button_visibility() -> void:
 	pause_button.text = "▶ 继续模拟" if sim.paused else "暂停模拟"
 	date_button.disabled = over or sim.season_mode
 
+	# 「导出图片」（1.3 ④）：只在本局已有保留路径 + 模拟已暂停时出现。
+	# ⚠ 位置在「暂停模拟」按钮下面；ESC 暂停菜单不加（用户 2026-11-22 定）。
+	export_button.visible = (not placing) and sim.paused and not over \
+		and path_layer != null and path_layer.has_archived_tracks()
+
 
 func _on_storm_finished(_rec: Game.StormRecord) -> void:
 	refresh()
@@ -204,6 +215,20 @@ func _on_undo_point_pressed() -> void:
 func _on_pause_pressed() -> void:
 	sim.toggle_pause()
 	refresh()
+
+
+## 「导出图片」：把底图 + 本局保留的全部路径合并成一张 PNG（1.3 ④）。
+## 生成是异步的（要等离屏视口渲染一两帧），期间按钮临时禁用。
+func _on_export_pressed() -> void:
+	if export_button.disabled:
+		return
+	export_button.disabled = true
+	export_button.text = "导出中…"
+	var exporter: RefCounted = TrackExporterClass.new()
+	var msg: String = await exporter.export_png(self, path_layer)
+	export_button.disabled = false
+	export_button.text = "导出图片"
+	_on_notice("导出失败：本局还没有可导出的路径" if msg == "" else msg)
 
 
 func _on_stop_pressed() -> void:

@@ -47,6 +47,8 @@ const ROW_FONT_SIZE := 19
 @onready var best_track_format_option: OptionButton = %BestTrackFormatOption
 ## 「暂停时间轴」勾选框（2026-11-08）
 var pause_timeline_check: CheckBox = null
+## 「显示台风路径」勾选框（1.3 ④，2026-11-22）
+var show_tracks_check: CheckBox = null
 
 # 跟着权限一起压暗的标签（锁住的项如果只有控件变灰、标签还亮着，看起来像坏了）
 @onready var mode_label: Label = %ModeLabel
@@ -137,10 +139,19 @@ func _build_sections() -> void:
 	pause_timeline_check.tooltip_text = "日期与季节海温冻结在当前值；台风照常移动、增强/减弱（暂停期间不记最佳路径样本）"
 	pause_timeline_check.toggled.connect(_on_pause_timeline_toggled)
 	content.add_child(pause_timeline_check)
+	# 「显示台风路径」（1.3 ④）：模拟选项（非作弊项），只影响画面，不影响导出。
+	show_tracks_check = CheckBox.new()
+	show_tracks_check.text = "显示台风路径"
+	show_tracks_check.custom_minimum_size = Vector2(200, 40)
+	show_tracks_check.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	show_tracks_check.tooltip_text = "显示当前台风和历史台风的路径折线。只影响画面，不影响导出的图片。"
+	show_tracks_check.toggled.connect(_on_show_tracks_toggled)
+	content.add_child(show_tracks_check)
 	# 重排：模拟选项（模式/风季/记录扰动/最佳路径）→ 环境参数（海温/季节增幅/暂停时间轴）
 	var order: Array[Node] = [
 		sec_a, content.get_node("ModeRow"), content.get_node("SeasonCheck"),
 		content.get_node("SepMid2"), record_disturbances_check,
+		show_tracks_check,
 		content.get_node("BestTrackGroup"),
 		sec_b, content.get_node("MeanSstRow"), content.get_node("SeasonalAmpRow"),
 		pause_timeline_check,
@@ -159,6 +170,12 @@ func _make_section_label(text_value: String) -> Label:
 
 func _on_pause_timeline_toggled(pressed: bool) -> void:
 	GameSettings.set_pause_timeline(pressed)
+
+
+## 「显示台风路径」：只影响显示，写入 settings.cfg（1.3 ④）
+func _on_show_tracks_toggled(pressed: bool) -> void:
+	GameSettings.show_tracks = pressed
+	_persist()
 
 
 func setup(p_in_game: bool, p_season: bool) -> void:
@@ -222,6 +239,9 @@ func set_context(p_in_game: bool, p_season: bool) -> void:
 	_set_editable(record_disturbances_check, true)
 	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
 	_set_editable(best_track_check, true)
+	# 1.3 ④「显示台风路径」：非作弊项，风季模式下也保持可改
+	if show_tracks_check != null:
+		_set_editable(show_tracks_check, true)
 	_update_dir_row()
 
 
@@ -241,6 +261,8 @@ func refresh_from_store() -> void:
 	seasonal_amp_spin.set_value_no_signal(GameSettings.seasonal_amplitude)
 	if pause_timeline_check != null:
 		pause_timeline_check.set_pressed_no_signal(GameSettings.pause_timeline)
+	if show_tracks_check != null:
+		show_tracks_check.set_pressed_no_signal(GameSettings.show_tracks)
 
 	record_disturbances_check.set_pressed_no_signal(GameSettings.record_disturbances)
 	best_track_check.set_pressed_no_signal(GameSettings.best_track_enabled)
