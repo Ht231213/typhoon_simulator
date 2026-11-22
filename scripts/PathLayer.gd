@@ -52,6 +52,12 @@ var live_views: Array = []
 var ignore_show_tracks := false
 ## 上次生效的「显示台风路径」开关（变了要重绘）
 var _show_tracks_cache := true
+## 当前轨迹的绘制命令缓存（2026-11-22 性能修复 C）：
+## 只有轨迹长出新点（points/phases/intensities 尺寸变化）才重建命令；
+## 图标位置每 tick（30 Hz）都会 queue_redraw，但轨迹点只在移动 >6 px（≈4 Hz）时才追加，
+## 所以绝大多数重绘直接用缓存，不再每帧跑一遍平滑+取色。
+var _cur_cmds: Array = []
+var _cur_cmd_sig := -1
 
 # ------------------------- 台风当前位置 -------------------------
 var live_position := Vector2.ZERO
@@ -908,15 +914,27 @@ func _draw_archive() -> void:
 		_draw_track_commands(t.render_cache)
 
 
-## 当前轨迹（每 tick 都在长，实时构建绘制指令）
+## 当前轨迹（每 tick 都在长）：**命令缓存**（性能修复 C）。
+## 签名只由三个数组的尺寸决定：轨迹只会在末尾追加，旧点的颜色/相位不会变。
 func _draw_track() -> void:
-	_draw_track_commands(_build_track_commands(points, intensities, phases))
+	var sig := points.size() * 1009 + phases.size() * 31 + intensities.size()
+	if sig != _cur_cmd_sig:
+		_cur_cmd_sig = sig
+		_cur_cmds = _build_track_commands(points, intensities, phases)
+	_draw_track_commands(_cur_cmds)
 
 
 ## 构建一条轨迹的绘制指令：
-##   按变性阶段分段 → 二次贝塞尔平滑 → 离散取色 → 切成「同色段」。
+##   按变性阶段/线型分段 → 二次贝塞尔平滑 → 离散取色 → **每段合成 1 条绘制指令**。
 ## 返回 Array[Dictionary]：{pts: PackedVector2Array, cols: PackedColorArray, dashed: bool}
 ## pts/kts/phs 既可以是当前轨迹，也可以是归档轨迹（TrackArchive.Track）。
+##
+## ⚠ 2026-11-22 性能修复（用户实测「路径段数 >5 就卡」）：
+##   A：取色从 O(smooth×run) 的「最近点搜索」改成用 `_smooth_params` 直接映射（O(n)）。
+##      550 点轨迹原来这一处就要 365 ms/帧，改后整段 build 只剩 ~6 ms。
+##   B：同「相位+线型」的整段只发 1 次 draw_polyline，换色处重复一个边界顶点保持
+##      「纯色分段、无渐变」外观。原来按颜色切成 137 条小折线，每条都有 0.1~0.2 ms
+##      固定调用开销；现在 550 点只要 3 段。
 func _build_track_commands(pts: PackedVector2Array, kts: PackedFloat32Array,
 		phs: PackedInt32Array) -> Array:
 	var cmds: Array = []
@@ -952,48 +970,31 @@ func _build_track_commands(pts: PackedVector2Array, kts: PackedFloat32Array,
 			continue
 		# 平滑曲线（二次贝塞尔穿中点，过原始点且不过冲）
 		var smooth := _smooth_polyline(run)
-		# 颜色：**离散**取色，不做任何 lerp（用户 2026-11-08）
-		# 每个采样点取「离它最近的原始路径点」的颜色，然后把曲线按同色切成若干段。
-		var cols := PackedColorArray()
+		# 颜色：**离散**取色，不做任何 lerp（用户 2026-11-08）。
+		# 用 _smooth_polyline 顺手算好的 _smooth_params（采样点 → 原始点参数）直接换算下标，
+		# 不要再对每个采样点遍历原始点找最近（那是 O(n²)，就是卡顿根因）。
+		var params := _smooth_params.duplicate()
+		# 换色处重复边界顶点：同位置写「旧色 + 新色」，下一段从新色开始 → 视觉上纯色硬边
+		var out_pts := PackedVector2Array()
+		var out_cols := PackedColorArray()
+		var last_col := Color(0, 0, 0, 0)
+		var have_last := false
 		for k in smooth.size():
-			var q := smooth[k]
-			var best := 0
-			var best_d := 1e18
-			for m in run.size():
-				var d := q.distance_squared_to(run[m])
-				if d < best_d:
-					best_d = d
-					best = m
-			cols.append(run_cols[clampi(best, 0, run_cols.size() - 1)])
-		var seg_start := 0
-		for k in range(1, smooth.size()):
-			if cols[k] != cols[k - 1]:
-				# ⚠ seg_start 必须推进到 **k**（不是 k-1）：
-				#   新色段会沿用上一段的旧颜色（EX 灰→黄整段变灰的根因）。
-				#   旧色段画到 k（重叠 1 个采样点防断口），新色段从 k 开始。
-				_append_track_command(cmds, smooth, cols, seg_start, k, dashed_i)
-				seg_start = k
-		_append_track_command(cmds, smooth, cols, seg_start, smooth.size() - 1, dashed_i)
+			var idx := clampi(int(roundf(params[k])), 0, run_cols.size() - 1)
+			var col: Color = run_cols[idx]
+			if have_last and col != last_col:
+				out_pts.append(smooth[k])
+				out_cols.append(last_col)
+			out_pts.append(smooth[k])
+			out_cols.append(col)
+			last_col = col
+			have_last = true
+		cmds.append({"pts": out_pts, "cols": out_cols, "dashed": dashed_i})
 		i = j + 1
 	return cmds
 
 
-## 把「同色的一段曲线」做成一条绘制指令（solid 或 dashed）
-func _append_track_command(cmds: Array, smooth: PackedVector2Array, cols: PackedColorArray,
-		from_i: int, to_i: int, dashed: bool) -> void:
-	if to_i <= from_i:
-		return
-	var sub := PackedVector2Array()
-	for k in range(from_i, to_i + 1):
-		sub.append(smooth[k])
-	var color: Color = cols[clampi(from_i, 0, cols.size() - 1)]
-	var sub_cols := PackedColorArray()
-	for k in sub.size():
-		sub_cols.append(color)
-	cmds.append({"pts": sub, "cols": sub_cols, "dashed": dashed})
-
-
-## 画一条轨迹的全部绘制指令
+## 画一条轨迹的全部绘制指令（每条命令 = 一整段「同相位+同线型」的平滑折线）
 func _draw_track_commands(cmds: Array) -> void:
 	for c in cmds:
 		var sub: PackedVector2Array = c["pts"]
