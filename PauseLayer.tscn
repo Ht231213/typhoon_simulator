@@ -1,6 +1,7 @@
 [gd_scene load_steps=2 format=3 uid="uid://ctyphoon0pause01"]
 
 [ext_resource type="Script" path="res://scripts/PauseLayer.gd" id="1_pause"]
+[ext_resource type="Script" path="res://scripts/ui/skew_button.gd" id="10_skew"]
 
 [node name="PauseLayer" type="CanvasLayer"]
 layer = 10
@@ -60,6 +61,7 @@ layout_mode = 2
 theme_override_constants/separation = 14
 
 [node name="ResumeButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
@@ -68,6 +70,7 @@ tooltip_text = "回到游戏（也可以按 ESC）"
 text = "回到游戏"
 
 [node name="SettingsButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
@@ -76,6 +79,7 @@ tooltip_text = "打开设置（视频 / 音频）"
 text = "设置"
 
 [node name="MenuButton" type="Button" parent="Root/Margin/Box/Rows/Columns/LeftColumn"]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2

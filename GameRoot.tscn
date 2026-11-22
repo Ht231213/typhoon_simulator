@@ -9,6 +9,9 @@
 [ext_resource type="Script" uid="uid://bgvg0i5gwch4u" path="res://scripts/Sidebar.gd" id="7_sidebar"]
 [ext_resource type="PackedScene" uid="uid://cwpp53cfhl3k7" path="res://ResultsPanel.tscn" id="8_results"]
 [ext_resource type="PackedScene" uid="uid://cwpp53abjjvq7" path="res://PauseLayer.tscn" id="9_pause"]
+[ext_resource type="Script" path="res://scripts/ui/skew_button.gd" id="10_skew"]
+[ext_resource type="Script" path="res://scripts/ui/date_panel.gd" id="11_date"]
+[ext_resource type="Script" path="res://scripts/ui/game_intro.gd" id="12_intro"]
 
 [node name="GameRoot" type="Control" unique_id=1260962457]
 layout_mode = 3
@@ -43,25 +46,27 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="MapLayer" type="Node2D" parent="View/MapArea" unique_id=1606845993]
+[node name="MapSlide" type="Node2D" parent="View/MapArea"]
+
+[node name="MapLayer" type="Node2D" parent="View/MapArea/MapSlide" unique_id=1606845993]
 unique_name_in_owner = true
 
-[node name="MapSprite" type="Sprite2D" parent="View/MapArea/MapLayer" unique_id=2134457641]
+[node name="MapSprite" type="Sprite2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2134457641]
 unique_name_in_owner = true
 texture_filter = 1
 position = Vector2(540, 432)
 scale = Vector2(0.36, 0.36)
 texture = ExtResource("2_map")
 
-[node name="GridOverlay" type="Node2D" parent="View/MapArea/MapLayer" unique_id=138385389]
+[node name="GridOverlay" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=138385389]
 unique_name_in_owner = true
 script = ExtResource("3_field")
 
-[node name="PathLayer" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2143226245]
+[node name="PathLayer" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2143226245]
 unique_name_in_owner = true
 script = ExtResource("4_path")
 
-[node name="TyphoonSim" type="Node2D" parent="View/MapArea/MapLayer" unique_id=2108909530]
+[node name="TyphoonSim" type="Node2D" parent="View/MapArea/MapSlide/MapLayer" unique_id=2108909530]
 unique_name_in_owner = true
 script = ExtResource("6_sim")
 
@@ -107,6 +112,7 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="AddButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=59512351]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
@@ -121,6 +127,7 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="UndoPointButton" type="Button" parent="View/Sidebar/SideRows/Buttons/PlacementRow" unique_id=407683569]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 36)
 layout_mode = 2
@@ -130,6 +137,7 @@ theme_override_font_sizes/font_size = 14
 text = "撤销路径点"
 
 [node name="ClearPointsButton" type="Button" parent="View/Sidebar/SideRows/Buttons/PlacementRow" unique_id=1887686864]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 36)
 layout_mode = 2
@@ -145,6 +153,7 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="CancelButton" type="Button" parent="View/Sidebar/SideRows/Buttons/CancelRow" unique_id=2135582517]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 36)
 layout_mode = 2
@@ -154,6 +163,7 @@ theme_override_font_sizes/font_size = 15
 text = "取消"
 
 [node name="PauseButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=659173045]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
@@ -162,6 +172,7 @@ theme_override_font_sizes/font_size = 17
 text = "暂停模拟"
 
 [node name="StopButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=1916717013]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
@@ -170,6 +181,7 @@ theme_override_font_sizes/font_size = 16
 text = "■ 停止模拟"
 
 [node name="DateButton" type="Button" parent="View/Sidebar/SideRows/Buttons" unique_id=106179264]
+script = ExtResource("10_skew")
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
@@ -183,39 +195,15 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 2
 
-[node name="DateDialog" type="AcceptDialog" parent="View/Sidebar" unique_id=1547992240]
-unique_name_in_owner = true
-title = "调整日期"
-size = Vector2i(320, 200)
-
-[node name="Grid" type="GridContainer" parent="View/Sidebar/DateDialog" unique_id=488879578]
-offset_left = 16.0
-offset_top = 16.0
-offset_right = 304.0
-offset_bottom = 120.0
-columns = 2
-
-[node name="MonthLabel" type="Label" parent="View/Sidebar/DateDialog/Grid" unique_id=1389067845]
-layout_mode = 2
-text = "月份"
-
-[node name="MonthSpin" type="SpinBox" parent="View/Sidebar/DateDialog/Grid" unique_id=247872806]
-unique_name_in_owner = true
-layout_mode = 2
-min_value = 1.0
-max_value = 12.0
-value = 6.0
-
-[node name="DayLabel" type="Label" parent="View/Sidebar/DateDialog/Grid" unique_id=18867525]
-layout_mode = 2
-text = "日期"
-
-[node name="DaySpin" type="SpinBox" parent="View/Sidebar/DateDialog/Grid" unique_id=340829368]
-unique_name_in_owner = true
-layout_mode = 2
-min_value = 1.0
-max_value = 30.0
-value = 20.0
+[node name="DatePanel" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("11_date")
 
 [node name="ResultsPanel" parent="." unique_id=194108904 instance=ExtResource("8_results")]
 unique_name_in_owner = true
@@ -223,3 +211,6 @@ visible = false
 layout_mode = 1
 
 [node name="PauseLayer" parent="." unique_id=1648842156 instance=ExtResource("9_pause")]
+
+[node name="GameIntro" type="Node" parent="."]
+script = ExtResource("12_intro")

@@ -10,6 +10,8 @@ extends Control
 
 
 func _ready() -> void:
+	# 台风图标/粒子用的是绝对 z_index（2 / 20），普通 Control 默认 0 会被压住
+	z_index = 30
 	again_button.pressed.connect(_on_again)
 	menu_button.pressed.connect(_on_menu)
 	visible = false
@@ -42,4 +44,5 @@ func _on_again() -> void:
 
 
 func _on_menu() -> void:
-	get_tree().change_scene_to_file("res://TitleScreen.tscn")
+	visible = false
+	SceneTransition.change_scene("res://TitleScreen.tscn")

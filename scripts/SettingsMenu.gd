@@ -1,4 +1,8 @@
 extends Control
+## ⚠ 2.0 起停用：设置界面已换成 scripts/ui/app_settings_panel.gd（左侧竖向 tab + 右侧背景），
+##   主菜单与 ESC 暂停菜单都用新面板（AppSettingsPanel.tscn）。
+##   保留此文件只为对照 1.x 的控件逻辑；设置项的实现（GameSettings 调用）已在新面板里一一对应。
+##
 ## 设置界面：选项卡式（预设 / 视频 / 音频 / 模拟设置），比窗口略小的半透明框，
 ## 顶部选项卡、底部「返回」。
 ##
