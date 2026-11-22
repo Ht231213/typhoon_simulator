@@ -67,7 +67,56 @@ func _ready() -> void:
 	path_editor.waypoints_changed.connect(_on_waypoints_changed)
 	path_editor.placement_changed.connect(_on_placement_changed)
 
+	# 按钮行背景是接近白色（2026-11-22 用户要求）→ 按钮改成白底深灰字
+	_style_button_bar()
+
 	refresh()
+
+
+## 按钮行 = 纯白/近白底 → 按钮文字必须换深色，否则看不见（用户 2026-11-22）。
+## 只改颜色/底框，按钮的尺寸、位置、排列一律不动：
+##   正常：透明底 + 深灰字；hover/pressed：淡灰底；禁用：浅灰字。
+const BAR_FONT_COLOR := Color(0.10, 0.12, 0.16, 1.0)
+const BAR_FONT_HOVER := Color(0.0, 0.0, 0.0, 1.0)
+const BAR_FONT_DIM := Color(0.52, 0.55, 0.60, 0.9)
+
+
+func _style_button_bar() -> void:
+	var normal := _bar_style(Color(0, 0, 0, 0))
+	var hover := _bar_style(Color(0, 0, 0, 0.07))
+	var pressed := _bar_style(Color(0, 0, 0, 0.13))
+	var disabled := _bar_style(Color(0, 0, 0, 0))
+	var focus := _bar_style(Color(0, 0, 0, 0.04))
+	var buttons := [add_button, pause_button, stop_button, stop_all_button, date_button,
+		undo_point_button, clear_points_button, cancel_button]
+	for b in buttons:
+		if b == null:
+			continue
+		b.add_theme_color_override("font_color", BAR_FONT_COLOR)
+		b.add_theme_color_override("font_hover_color", BAR_FONT_HOVER)
+		b.add_theme_color_override("font_pressed_color", BAR_FONT_HOVER)
+		b.add_theme_color_override("font_focus_color", BAR_FONT_COLOR)
+		b.add_theme_color_override("font_disabled_color", BAR_FONT_DIM)
+		b.add_theme_stylebox_override("normal", normal)
+		b.add_theme_stylebox_override("hover", hover)
+		b.add_theme_stylebox_override("pressed", pressed)
+		b.add_theme_stylebox_override("disabled", disabled)
+		b.add_theme_stylebox_override("focus", focus)
+
+
+## 白底上的按钮底框：左右留 10 px 内边距（保证文字不贴边），高度由按钮 min 决定
+static func _bar_style(bg: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.content_margin_left = 10.0
+	sb.content_margin_right = 10.0
+	sb.content_margin_top = 0.0
+	sb.content_margin_bottom = 0.0
+	sb.corner_radius_top_left = 5
+	sb.corner_radius_top_right = 5
+	sb.corner_radius_bottom_right = 5
+	sb.corner_radius_bottom_left = 5
+	return sb
 
 
 ## 每帧只刷新文字，不重建按钮状态（避免每帧做布局计算）
