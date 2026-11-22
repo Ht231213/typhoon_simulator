@@ -72,6 +72,15 @@ func _ready() -> void:
 	set_process(true)
 
 
+## ESC 关闭（2026-11-22）：之前没处理，ESC 会被 PauseLayer 接走变成「打开暂停菜单」。
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
+		close()
+		get_viewport().set_input_as_handled()
+
+
 func _build_ui() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)

@@ -7,27 +7,34 @@ extends CanvasLayer
 ##
 ## 关键设置：
 ##   · 本节点 process_mode = ALWAYS，保证「没暂停时也能收到 ESC」
-##     （原工程的 esc_handel.gd 设成了 WHEN_PAUSED，结果自己永远收不到触发自己的按键）
 ##   · 里面的按钮和遮罩也都设成 ALWAYS，否则 paused = true 之后点不动
 ##
-## 2026-11-22 需求：
-##   · 左列加「导出图片」（位置：设置下面、返回主菜单上面）
-##   · 导出只含**已结束台风**的路径；没有已结束台风时按钮禁用
-##   · 点导出后**保持菜单打开**，结果显示在底部 Hint：「已导出：<路径>」
+## 2026-11-22 改版：
+##   · 右列从 RichText 列表改成**表格**（和 ACE 存档同款 AceTable）：
+##       「进行中」小表（6 列）+ 「已完成」表格（8 列，模式在标题里）
+##   · 左列保留：回到游戏 / 设置 / 导出图片 / 返回主菜单
+##   · ESC：若 DebugPanel（F6）开着，先让它处理（本菜单不抢）；否则开/关本菜单。
 
 @onready var root: Control = $Root
 @onready var resume_button: Button = %ResumeButton
 @onready var menu_button: Button = %MenuButton
 @onready var settings_button: Button = %SettingsButton
 @onready var export_button: Button = %ExportButton
-@onready var storm_list: RichTextLabel = %StormList
 @onready var list_title: Label = %ListTitle
+@onready var run_title: Label = %RunTitle
+@onready var run_header: VBoxContainer = %RunHeaderHost
+@onready var run_rows: VBoxContainer = %RunRows
+@onready var done_title: Label = %DoneTitle
+@onready var done_header: VBoxContainer = %DoneHeaderHost
+@onready var done_rows: VBoxContainer = %DoneRows
 @onready var hint_label: Label = %Hint
 
 ## 设置界面场景（打开时实例化，与主菜单共用同一份）
 const SETTINGS_SCENE := "res://SettingsMenu.tscn"
 ## 导出图片（1.3 ④）：离屏渲染在 TrackExporter 里做
 const TrackExporterClass := preload("res://scripts/TrackExporter.gd")
+## 表格构建器（ACE 存档 / 结算界面共用）
+const AceTableClass := preload("res://scripts/AceTable.gd")
 ## GameRoot 内的节点路径（2026-11-22 布局重构后：View/TopRow/...）
 const PATH_LAYER_PATH := "View/TopRow/MapArea/MapLayer/PathLayer"
 const SIM_PATH := "View/TopRow/MapArea/MapLayer/TyphoonSim"
@@ -50,6 +57,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# 设置界面开着时，ESC 交给设置界面自己处理
 	if _settings != null and _settings.visible:
 		return
+	# F6 调试面板开着时，ESC 交给它关（DebugPanel 自己会吞掉事件）
+	var dbg := _game_node("DebugPanel")
+	if dbg != null and dbg is CanvasLayer and (dbg as CanvasLayer).visible:
+		return
 	if root.visible:
 		resume()
 	else:
@@ -58,7 +69,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func pause() -> void:
-	_refresh_storm_list()
+	_refresh_tables()
 	_refresh_export_button()
 	hint_label.visible = false
 	hint_label.text = ""
@@ -69,6 +80,75 @@ func pause() -> void:
 func resume() -> void:
 	root.visible = false
 	get_tree().paused = false
+
+
+func _game_node(path: String) -> Node:
+	var g := get_parent()
+	if g == null:
+		return null
+	return g.get_node_or_null(path)
+
+
+# ============================ 本局表格（2026-11-22） ============================
+
+func _refresh_tables() -> void:
+	var g := get_parent()
+	var sim: TyphoonSim = null
+	if g != null:
+		sim = g.get_node_or_null(SIM_PATH) as TyphoonSim
+	var running: Array = sim.storms if sim != null else []
+	var done: Array = Game.visible_records()
+
+	list_title.text = "本局 · %s    总 ACE %.2f" % [Game.mode_label(), Game.total_ace]
+	run_title.text = "进行中（%d 场）" % running.size()
+	done_title.text = "已完成（%d 场）" % done.size()
+
+	# 进行中：6 列小表
+	_clear(run_header)
+	_clear(run_rows)
+	AceTableClass.build_header(run_header, AceTableClass.COLUMNS_RUNNING)
+	var run_rows_data: Array[Dictionary] = []
+	for s in running:
+		var st: Storm = s
+		run_rows_data.append({
+			"number": st.number_text(),
+			"name": st.name_label(),
+			"peak": "%d kt" % int(roundf(st.wind_kt)),
+			"pressure": "%d hPa" % int(roundf(st.central_pressure)),
+			"center": st.latlon_text(),
+			"ace": "%.2f" % st.ace,
+		})
+	if run_rows_data.is_empty():
+		AceTableClass.build_empty(run_rows, "（没有进行中的台风）")
+	else:
+		AceTableClass.build_rows(run_rows, run_rows_data, AceTableClass.COLUMNS_RUNNING)
+
+	# 已完成：8 列表格（模式在本局标题里，不再单列）
+	_clear(done_header)
+	_clear(done_rows)
+	AceTableClass.build_header(done_header, AceTableClass.COLUMNS_PAUSE)
+	var done_data: Array[Dictionary] = []
+	for rec in done:
+		var r: Game.StormRecord = rec
+		done_data.append({
+			"number": r.number_text,
+			"name": r.storm_name,
+			"cat": AceTableClass.category_text(r.reached_st, r.peak_wind_kt),
+			"peak": "%d kt" % int(roundf(r.peak_wind_kt)),
+			"pressure": "%d hPa" % int(roundf(r.min_pressure)),
+			"ace": "%.2f" % r.ace,
+			"duration": AceTableClass.duration_text(r.start_day, r.end_day),
+			"end": AceTableClass.end_day_text(r.end_day),
+		})
+	if done_data.is_empty():
+		AceTableClass.build_empty(done_rows, "（本局还没有已完成的台风）")
+	else:
+		AceTableClass.build_rows(done_rows, done_data, AceTableClass.COLUMNS_PAUSE)
+
+
+func _clear(node: Node) -> void:
+	for c in node.get_children():
+		c.queue_free()
 
 
 # ============================ 导出图片（1.3 ④） ============================
@@ -113,46 +193,7 @@ func _on_export_pressed() -> void:
 	hint_label.text = msg if msg != "" else "导出失败：本局还没有已结束的台风"
 
 
-# ============================ 台风列表 ============================
-
-## 本局台风列表：⑤A-1 多台风起分「进行中」和「已完成」两组。
-## 点「停止模拟」的台风不进已完成列表（也不计入 ACE）。
-## ⚠ 用 visible_records()：默认只列热带风暴级及以上，
-##   打开「记录热带扰动和低压」后连 <30 kt 的扰动也一并列出。
-func _refresh_storm_list() -> void:
-	var vis := Game.visible_records()
-	var g := _world_root()
-	var sim: TyphoonSim = null
-	if g != null:
-		sim = g.get_node_or_null(SIM_PATH) as TyphoonSim
-	var running: Array = sim.storms if sim != null else []
-	var title := "本次台风列表（已完成 %d 场" % vis.size()
-	if not running.is_empty():
-		title += " · 进行中 %d 场" % running.size()
-	title += "）    总 ACE %.2f" % Game.total_ace
-	list_title.text = title
-
-	var lines := PackedStringArray()
-	if not running.is_empty():
-		lines.append("[b]进行中（%d 场）[/b]" % running.size())
-		for i in running.size():
-			var s: Storm = running[i]
-			lines.append("  %s %s  %3d kt  %4d hPa  %s" % [
-				s.number_text(), s.name_label(),
-				int(roundf(s.wind_kt)), int(roundf(s.central_pressure)),
-				s.latlon_text()])
-		lines.append("")
-	if vis.is_empty():
-		if running.is_empty():
-			storm_list.text = "[i][color=#889]还没有台风。[/color][/i]"
-		else:
-			storm_list.text = "\n".join(lines)
-		return
-	lines.append("[b]已完成（%d 场）[/b]" % vis.size())
-	for i in vis.size():
-		lines.append(Game.format_record(vis[i]))
-	storm_list.text = "\n".join(lines)
-
+# ============================ 按钮 ============================
 
 func _on_menu_pressed() -> void:
 	get_tree().paused = false

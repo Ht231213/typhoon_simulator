@@ -39,6 +39,39 @@ const COLUMNS_RESULTS: Array[Dictionary] = [
 	{"key": "end", "title": "结束日期", "width": 130, "align": 0},
 ]
 
+## ACE 存档「一级」= 每次风季模拟（session）一行；按总 ACE 降序排名
+const COLUMNS_SESSION: Array[Dictionary] = [
+	{"key": "rank", "title": "排名", "width": 70, "align": 1},
+	{"key": "date", "title": "场次日期", "width": 220, "align": 0},
+	{"key": "mode", "title": "模式", "width": 130, "align": 0},
+	{"key": "count", "title": "台风数", "width": 100, "align": 2},
+	{"key": "ace", "title": "总 ACE", "width": 130, "align": 2},
+	{"key": "peak", "title": "最高峰值", "width": 130, "align": 2},
+	{"key": "end", "title": "结束日期", "width": 140, "align": 0},
+]
+
+## ESC 暂停菜单右列（窗口 1280 时右列约 970 px，用这套紧凑 8 列，总宽 916）
+const COLUMNS_PAUSE: Array[Dictionary] = [
+	{"key": "number", "title": "编号", "width": 80, "align": 0},
+	{"key": "name", "title": "名称", "width": 150, "align": 0},
+	{"key": "cat", "title": "巅峰等级", "width": 90, "align": 1},
+	{"key": "peak", "title": "巅峰风速", "width": 110, "align": 2},
+	{"key": "pressure", "title": "最低气压", "width": 110, "align": 2},
+	{"key": "ace", "title": "ACE", "width": 100, "align": 2},
+	{"key": "duration", "title": "持续时间", "width": 110, "align": 2},
+	{"key": "end", "title": "结束日期", "width": 110, "align": 0},
+]
+
+## ESC 暂停菜单「进行中」小表（6 列，总宽 770）
+const COLUMNS_RUNNING: Array[Dictionary] = [
+	{"key": "number", "title": "编号", "width": 90, "align": 0},
+	{"key": "name", "title": "名称", "width": 150, "align": 0},
+	{"key": "peak", "title": "强度", "width": 100, "align": 2},
+	{"key": "pressure", "title": "气压", "width": 110, "align": 2},
+	{"key": "center", "title": "中心", "width": 180, "align": 0},
+	{"key": "ace", "title": "ACE", "width": 100, "align": 2},
+]
+
 const ROW_HEIGHT := 28
 const ROW_FONT_SIZE := 16
 const HEADER_FONT_SIZE := 17
@@ -62,8 +95,9 @@ static func build_header(parent: Node, columns: Array = COLUMNS_ARCHIVE) -> Pane
 	return panel
 
 
-## 在 parent（VBox）下建数据行。rows 是 Dictionary 列表，key 见 COLUMNS。
-static func build_rows(parent: Node, rows: Array, columns: Array = COLUMNS_ARCHIVE) -> void:
+## 在 parent（VBox）下建数据行。rows 是 Dictionary 列表，key 见 columns。\n## 返回每一行的 PanelContainer（需要整行交互时用，比如 ACE 场次表的双击）。
+static func build_rows(parent: Node, rows: Array, columns: Array = COLUMNS_ARCHIVE) -> Array:
+	var out: Array = []
 	for i in rows.size():
 		var alt := (i % 2 == 1)
 		var pair := _new_row(ROW_ALT_BG if alt else Color(1, 1, 1, 0), false)
@@ -75,6 +109,8 @@ static func build_rows(parent: Node, rows: Array, columns: Array = COLUMNS_ARCHI
 				str(data.get(col["key"], "")), float(col["width"]),
 				int(col["align"]), ROW_FONT_SIZE, false))
 		parent.add_child(panel)
+		out.append(panel)
+	return out
 
 
 ## 空表格提示（「暂无存档记录」这类）

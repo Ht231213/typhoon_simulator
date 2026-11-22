@@ -23,7 +23,7 @@ const GRID_OVERLAY_PATH := "MapLayer/GridOverlay"
 
 ## 调试面板（F6）。运行到 _ready 时才会被实例化出来。
 var debug_panel: Node = null
-## 海区探针：跟随鼠标显示所指海区的信息。由 T 键（海温查看模式）一并开关。
+## 海区探针：跟随鼠标显示所指海区的信息。由 F2 键（海温查看模式）一并开关。
 var cell_probe: Node = null
 
 ## 地图缩放档位（2026-11-22 用户要求）：1x = 适应窗口看全图；≥2x 跟随选中台风
@@ -32,6 +32,8 @@ const ZOOM_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0]
 var _zoom_index := 0
 ## 「适应窗口」时地图的 scale（窗口尺寸变了要重算）
 var _fit_scale := 1.0
+## G 键调试网格：打开前的海温层状态（再按 G 关闭网格时恢复）
+var _grid_prev_show_field := false
 
 
 func _ready() -> void:
@@ -52,7 +54,7 @@ func _ready() -> void:
 	add_child(debug_panel)
 	debug_panel.setup(sim, field)
 
-	# 海区探针：跟随鼠标显示所指海区的信息（由 T 键海温查看模式一并开关）
+	# 海区探针：跟随鼠标显示所指海区的信息（由 F2 键海温查看模式一并开关）
 	cell_probe = load("res://CellInspector.tscn").instantiate()
 	add_child(cell_probe)
 	cell_probe.setup(map_layer, field, sim)
@@ -98,15 +100,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match (event as InputEventKey).keycode:
 		KEY_G:
-			# 调试：显示/隐藏 16x12 网格线，用来核对格子与地图是否对齐
-			field.show_grid_lines = not field.show_grid_lines
+			# 调试网格（2026-11-22 修好）：底图 WPAC.png 自带经纬网，本键控制的是
+			# **192 个海温格的白色边框**——它只在「海温层（F2）」打开时才画，
+			# 所以按 G 时先临时打开海温层；再按 G 关闭网格并把海温层恢复原状。
+			if not field.show_grid_lines:
+				_grid_prev_show_field = field.show_field
+				field.show_field = true
+				field.show_grid_lines = true
+				sidebar._on_notice("网格线：开（192 格白框，临时打开海温层；再按 G 恢复）")
+			else:
+				field.show_grid_lines = false
+				field.show_field = _grid_prev_show_field
+				sidebar._on_notice("网格线：关（海温层恢复为%s）" % ("开" if field.show_field else "关"))
 			field.queue_redraw()
-			sidebar._on_notice("网格线：%s" % ("开" if field.show_grid_lines else "关"))
 			get_viewport().set_input_as_handled()
-		KEY_T:
-			# 海温查看模式：**色块 + 鼠标探针，一开全给**（用户 2026-10-17 决定）。
+		KEY_F2:
+			# 海温查看模式（2026-11-22 由 T 键改为 F2）：**色块 + 鼠标探针，一开全给**。
 			#   色块 = 192 格的海温/气压颜色叠层，一眼看分布
 			#   探针 = 鼠标指哪看哪，显示该格的具体数值和冷水坑/地形等状态
+			# ⚠ 若 G 的调试网格开着，先清掉（它依赖海温层，海温层关了本来就看不到）
+			field.show_grid_lines = false
 			var sst_view_on: bool = not field.show_field
 			field.show_field = sst_view_on
 			if cell_probe != null:
@@ -148,7 +161,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				sidebar._on_notice("陆地格子：关")
 			get_viewport().set_input_as_handled()
 		KEY_F6:
-			# 调试面板：查看/修改运算输入与台风数值
+			# 调试**作弊**面板：只看 config/simulation.cfg 的 [debug] allow_debug_cheats（默认 false）
+			if not Const.ALLOW_DEBUG_CHEATS:
+				print("[F6] 调试作弊面板已在 config 关闭（[debug] allow_debug_cheats=false）")
+				get_viewport().set_input_as_handled()
+				return
 			if debug_panel != null:
 				debug_panel.toggle()
 			get_viewport().set_input_as_handled()
