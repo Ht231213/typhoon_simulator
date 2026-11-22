@@ -13,8 +13,8 @@ extends Control
 ## 应用设置（视频 / 音频 / 模拟设置选项卡）。
 ## ⚠ 它**不能**是场景里的静态实例 —— 见 `_ready()` 里的创建代码（BUG-1）。
 var app_settings: Control = null
-@onready var board_popup: AcceptDialog = %BoardPopup
-@onready var board_text: RichTextLabel = %BoardText
+## ACE 存档大窗口（2026-11-22 需求 7）。同样必须运行时实例化（BUG-1）。
+var ace_archive: Control = null
 ## 左下角版本号。文字在 `_ready()` 里从 ProjectSettings 取，不硬编码（改版本号自动跟随）
 @onready var version_label: Label = %VersionLabel
 
@@ -60,6 +60,16 @@ func _ready() -> void:
 	settings_panel.on_cancel = _on_settings_cancelled
 	settings_panel.settings_requested.connect(_on_cinematic_settings_requested)
 	settings_panel.visible = false
+
+	# ACE 存档大窗口（2026-11-22 需求 7）：与 SettingsMenu 一样运行时实例化 + 显式铺满，
+	# 避免导出包里静态 Control 实例丢锚点的 BUG-1。
+	ace_archive = load("res://AceArchive.tscn").instantiate()
+	ace_archive.name = "AceArchive"
+	add_child(ace_archive)
+	ace_archive.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ace_archive.on_closed = _on_ace_archive_closed
+	ace_archive.visible = false
+
 	app_settings.on_closed = _on_app_settings_closed
 	app_settings.visible = false
 	single_button.grab_focus()
@@ -91,46 +101,10 @@ func _on_exit_pressed() -> void:
 	get_tree().quit()
 
 
+## 「ACE 存档」：打开大窗口 + 表格（2026-11-22 需求 7，替代原来的 620×460 弹窗）
 func _on_board_pressed() -> void:
-	board_text.text = _build_board_text()
-	board_popup.popup_centered(Vector2i(620, 460))
+	ace_archive.open()
 
 
-## ACE 排行榜：按总 ACE 从高到低排，只显示前 10 条
-func _build_board_text() -> String:
-	var lines := PackedStringArray()
-	lines.append("[b][font_size=20]ACE 排行榜[/font_size][/b]")
-	lines.append("[color=#9aa]存档：%s[/color]" % Game.save_path_absolute())
-	lines.append("")
-
-	var total := 0
-	for category in ["单台-手动", "单台-自动"]:
-		var history: Array = Game.history(category)
-		total += history.size()
-		lines.append("[b][font_size=17]%s[/font_size][/b]  （共 %d 条）" % [category, history.size()])
-		if history.is_empty():
-			lines.append("    [i]暂无记录[/i]")
-		else:
-			# 排序：总 ACE 高的在前
-			var sorted := history.duplicate()
-			sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-				return float(a.get("total_ace", 0.0)) > float(b.get("total_ace", 0.0)))
-			var top: int = mini(10, sorted.size())
-			lines.append("    [color=#889]排名  总ACE     场次   时间[/color]")
-			for i in top:
-				var e: Dictionary = sorted[i]
-				# ⚠ 原来的奖牌 emoji（U+1F947/48/49）不在 Noto Sans SC 的 cmap 里
-				#   （网页版没系统字体 → 方框），改用字体自带的 ★；
-				#   名次数字本来就在后面打印，信息没少。
-				var medal := "★ " if i < 3 else ""
-				lines.append("    %s%-4d %8.2f  %3d 场  %s" % [
-					medal, i + 1,
-					float(e.get("total_ace", 0.0)),
-					int(e.get("storm_count", 0)),
-					Time.get_datetime_string_from_unix_time(int(e.get("saved_at", 0))),
-				])
-		lines.append("")
-
-	if total == 0:
-		lines.append("[i]还没有任何成绩。跑一局「风季模式」，结束后会自动写入排行榜。[/i]")
-	return "\n".join(lines)
+func _on_ace_archive_closed() -> void:
+	board_button.grab_focus()
